@@ -1,17 +1,36 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.config import settings
 from app.database import Base, engine
 import app.models  # noqa: registers all ORM models with Base.metadata before create_all
 from app.routers import auth, accounts, transactions, sync
+from app.routers import categories
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # Lightweight migrations for columns added after initial deploy
+    _migrate()
     yield
+
+
+def _migrate():
+    migrations = [
+        "ALTER TABLE accounts ADD COLUMN sort_order INTEGER DEFAULT 0",
+        "ALTER TABLE accounts ADD COLUMN is_excluded BOOLEAN DEFAULT 0",
+        "CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, color TEXT)",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # column/table already exists
 
 
 app = FastAPI(title="Phoenix Finance API", lifespan=lifespan)
@@ -27,6 +46,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(accounts.router, prefix="/accounts", tags=["accounts"])
 app.include_router(transactions.router, prefix="/transactions", tags=["transactions"])
+app.include_router(categories.router, prefix="/categories", tags=["categories"])
 app.include_router(sync.router, prefix="/sync", tags=["sync"])
 
 

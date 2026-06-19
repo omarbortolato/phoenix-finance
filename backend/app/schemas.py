@@ -14,6 +14,8 @@ class AccountOut(BaseModel):
     current_balance: float
     dashboard_link: Optional[str] = None
     last_sync_at: Optional[datetime] = None
+    sort_order: int = 0
+    is_excluded: bool = False
 
     model_config = {"from_attributes": True}
 

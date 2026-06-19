@@ -1,12 +1,13 @@
 from typing import Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import desc, func, distinct
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Transaction
+from app.models import Transaction, Category
 from app.schemas import TransactionList, TransactionOut
 
 router = APIRouter()
@@ -48,18 +49,23 @@ def list_transactions(
     return {"total": total, "items": items}
 
 
-@router.get("/categories")
-def list_categories(
+class CategoryPatch(BaseModel):
+    category: str | None = None
+
+
+@router.patch("/{txn_id}/category")
+def set_category(
+    txn_id: str,
+    body: CategoryPatch,
     db: Session = Depends(get_db),
     _: str = Depends(get_current_user),
 ):
-    """Distinct mercury_category values present in the DB."""
-    rows = (
-        db.query(distinct(Transaction.mercury_category))
-        .filter(Transaction.mercury_category.isnot(None))
-        .all()
-    )
-    return sorted(r[0] for r in rows if r[0])
+    txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
+    if not txn:
+        raise HTTPException(404, "Transaction not found")
+    txn.mercury_category = body.category or None
+    db.commit()
+    return {"id": txn.id, "mercury_category": txn.mercury_category}
 
 
 @router.get("/summary")

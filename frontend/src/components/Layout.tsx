@@ -1,12 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { api } from '../api/client'
 
+interface SidebarAccount {
+  id: string
+  name: string
+  legal_business_name: string
+}
+
 interface LayoutProps {
   children: React.ReactNode
-  accounts?: { id: string; name: string; legal_business_name: string }[]
+  accounts?: SidebarAccount[]
   onSync?: () => void
   syncing?: boolean
 }
@@ -15,16 +21,110 @@ const navItem = 'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-med
 const navActive = 'bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
 const navInactive = 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800/60'
 
-export default function Layout({ children, accounts = [], onSync, syncing }: LayoutProps) {
+export default function Layout({ children, accounts: propAccounts = [], onSync, syncing }: LayoutProps) {
   const { user, logout } = useAuth()
   const { theme, toggle } = useTheme()
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [sidebarAccounts, setSidebarAccounts] = useState<SidebarAccount[]>(propAccounts)
+  const [hovered, setHovered] = useState<string | null>(null)
+
+  // Sync with parent whenever the account list changes (e.g. after a data sync)
+  useEffect(() => {
+    setSidebarAccounts(propAccounts)
+  }, [propAccounts.map(a => a.id).join(',')])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await logout()
     navigate('/login')
   }
+
+  const moveAccount = async (id: string, dir: 'up' | 'down') => {
+    const idx = sidebarAccounts.findIndex(a => a.id === id)
+    if (idx === -1) return
+    if (dir === 'up' && idx === 0) return
+    if (dir === 'down' && idx === sidebarAccounts.length - 1) return
+
+    const next = [...sidebarAccounts]
+    const swap = dir === 'up' ? idx - 1 : idx + 1
+    ;[next[idx], next[swap]] = [next[swap], next[idx]]
+    setSidebarAccounts(next)
+
+    try {
+      await api.reorderAccounts(next.map((a, i) => ({ id: a.id, sort_order: i })))
+    } catch {
+      setSidebarAccounts(sidebarAccounts) // revert on failure
+    }
+  }
+
+  const hideAccount = async (id: string) => {
+    setSidebarAccounts(prev => prev.filter(a => a.id !== id))
+    try {
+      await api.excludeAccount(id)
+    } catch {
+      // restore on failure
+      setSidebarAccounts(sidebarAccounts)
+    }
+  }
+
+  const AccountList = () => (
+    <div className="pt-3 pb-1">
+      <p className="px-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1">
+        Accounts
+      </p>
+      {sidebarAccounts.map((a, idx) => (
+        <div
+          key={a.id}
+          className="group relative"
+          onMouseEnter={() => setHovered(a.id)}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <NavLink
+            to={`/accounts/${a.id}`}
+            className={({ isActive }) => `${navItem} ${isActive ? navActive : navInactive} pr-16`}
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            <span className="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0" />
+            <span className="truncate">{a.legal_business_name}</span>
+          </NavLink>
+          {/* Reorder + hide controls — visible on hover */}
+          {hovered === a.id && (
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+              <button
+                onClick={e => { e.preventDefault(); moveAccount(a.id, 'up') }}
+                disabled={idx === 0}
+                title="Move up"
+                className="p-0.5 rounded text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 disabled:opacity-20 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7"/>
+                </svg>
+              </button>
+              <button
+                onClick={e => { e.preventDefault(); moveAccount(a.id, 'down') }}
+                disabled={idx === sidebarAccounts.length - 1}
+                title="Move down"
+                className="p-0.5 rounded text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 disabled:opacity-20 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+              <button
+                onClick={e => { e.preventDefault(); hideAccount(a.id) }}
+                title="Hide account"
+                className="p-0.5 rounded text-zinc-400 hover:text-red-500 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 
   const Nav = () => (
     <nav className="space-y-0.5">
@@ -37,21 +137,7 @@ export default function Layout({ children, accounts = [], onSync, syncing }: Lay
         Cockpit
       </NavLink>
 
-      {accounts.length > 0 && (
-        <div className="pt-3 pb-1">
-          <p className="px-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1">
-            Accounts
-          </p>
-          {accounts.map(a => (
-            <NavLink key={a.id} to={`/accounts/${a.id}`}
-              className={({ isActive }) => `${navItem} ${isActive ? navActive : navInactive}`}
-              onClick={() => setMobileMenuOpen(false)}>
-              <span className="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0" />
-              <span className="truncate">{a.legal_business_name}</span>
-            </NavLink>
-          ))}
-        </div>
-      )}
+      {sidebarAccounts.length > 0 && <AccountList />}
 
       <NavLink to="/categorize" className={({ isActive }) => `${navItem} ${isActive ? navActive : navInactive}`}
         onClick={() => setMobileMenuOpen(false)}>
@@ -80,6 +166,16 @@ export default function Layout({ children, accounts = [], onSync, syncing }: Lay
         </div>
 
         <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 space-y-1">
+          {onSync && (
+            <button onClick={onSync} disabled={syncing}
+              className={`${navItem} ${navInactive} w-full disabled:opacity-40`}>
+              <svg className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              {syncing ? 'Syncing…' : 'Sync'}
+            </button>
+          )}
           <button onClick={toggle}
             className={`${navItem} ${navInactive} w-full`}>
             {theme === 'dark' ? (

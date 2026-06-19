@@ -37,6 +37,8 @@ export interface Account {
   current_balance: number
   dashboard_link?: string
   last_sync_at?: string
+  sort_order?: number
+  is_excluded?: boolean
 }
 
 export interface AccountTotals {
@@ -102,10 +104,23 @@ export const api = {
     category?: string; search?: string; limit?: number; offset?: number
   }) => req<TransactionList>(`/transactions${qs(p)}`),
 
-  categories: () => req<string[]>('/transactions/categories'),
+  categories: () => req<string[]>('/categories'),
+  createCategory: (name: string) =>
+    req<{ id: number; name: string }>('/categories', { method: 'POST', body: JSON.stringify({ name }) }),
+
+  setCategory: (txnId: string, category: string | null) =>
+    req<{ id: string; mercury_category: string | null }>(
+      `/transactions/${txnId}/category`,
+      { method: 'PATCH', body: JSON.stringify({ category }) },
+    ),
 
   categoryBreakdown: (p: { account_id?: string; start?: string; end?: string }) =>
     req<CategoryBreakdown[]>(`/transactions/category-breakdown${qs(p)}`),
+
+  reorderAccounts: (items: { id: string; sort_order: number }[]) =>
+    req('/accounts/reorder', { method: 'PATCH', body: JSON.stringify(items) }),
+  excludeAccount: (id: string) =>
+    req(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify({ is_excluded: true }) }),
 
   sync: () => req<SyncResult>('/sync', { method: 'POST' }),
 }

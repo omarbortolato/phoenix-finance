@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, Transaction, TransactionList as TList, formatCategory, getCategoryColor, formatUSD } from '../api/client'
 import { format, parseISO } from 'date-fns'
 
@@ -13,13 +13,17 @@ interface Props {
   accounts?: { id: string; legal_business_name: string }[]
 }
 
-function CategoryPill({ cat }: { cat?: string }) {
+function CategoryPill({ cat, onClick }: { cat?: string; onClick?: () => void }) {
   const label = formatCategory(cat)
   const color = getCategoryColor(cat || 'Uncategorized')
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
-      style={{ backgroundColor: `${color}18`, color }}>
+    <span
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${onClick ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+      style={{ backgroundColor: `${color}18`, color }}
+    >
       {label}
+      {onClick && <svg className="w-2.5 h-2.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>}
     </span>
   )
 }
@@ -33,12 +37,123 @@ function AmountCell({ amount }: { amount: number }) {
   )
 }
 
+function CategoryCell({
+  txnId,
+  current,
+  categories,
+  onSaved,
+}: {
+  txnId: string
+  current?: string
+  categories: string[]
+  onSaved: (newCat: string | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [newCatInput, setNewCatInput] = useState('')
+  const [addingNew, setAddingNew] = useState(false)
+  const selectRef = useRef<HTMLSelectElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing) selectRef.current?.focus()
+  }, [editing])
+
+  useEffect(() => {
+    if (addingNew) inputRef.current?.focus()
+  }, [addingNew])
+
+  const save = async (val: string | null) => {
+    setSaving(true)
+    try {
+      await api.setCategory(txnId, val)
+      onSaved(val)
+    } finally {
+      setSaving(false)
+      setEditing(false)
+      setAddingNew(false)
+      setNewCatInput('')
+    }
+  }
+
+  const saveNew = async () => {
+    const name = newCatInput.trim()
+    if (!name) return
+    setSaving(true)
+    try {
+      await api.createCategory(name)
+      await api.setCategory(txnId, name)
+      onSaved(name)
+    } finally {
+      setSaving(false)
+      setEditing(false)
+      setAddingNew(false)
+      setNewCatInput('')
+    }
+  }
+
+  if (saving) {
+    return <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+  }
+
+  if (addingNew) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          ref={inputRef}
+          value={newCatInput}
+          onChange={e => setNewCatInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') saveNew(); if (e.key === 'Escape') { setAddingNew(false); setEditing(false) } }}
+          placeholder="New category…"
+          className="text-xs border border-violet-400 rounded px-2 py-0.5 w-28
+            bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200
+            focus:outline-none focus:ring-1 focus:ring-violet-500"
+        />
+        <button onClick={saveNew} className="text-xs text-violet-600 font-medium hover:text-violet-700">Save</button>
+        <button onClick={() => { setAddingNew(false); setEditing(false) }} className="text-xs text-zinc-400 hover:text-zinc-600">×</button>
+      </div>
+    )
+  }
+
+  if (editing) {
+    return (
+      <select
+        ref={selectRef}
+        defaultValue={current || ''}
+        onChange={e => {
+          const val = e.target.value
+          if (val === '__new__') { setAddingNew(true); return }
+          save(val || null)
+        }}
+        onBlur={() => setEditing(false)}
+        className="text-xs border border-violet-400 rounded-lg px-2 py-1
+          bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300
+          focus:outline-none focus:ring-1 focus:ring-violet-500"
+      >
+        <option value="">Uncategorized</option>
+        {categories.map(c => (
+          <option key={c} value={c}>{formatCategory(c)}</option>
+        ))}
+        <option value="__new__">+ New category…</option>
+      </select>
+    )
+  }
+
+  return <CategoryPill cat={current} onClick={() => setEditing(true)} />
+}
+
 export default function TransactionList({ accountId, start, end, category, search, limit = 50, showAccount = false, accounts = [] }: Props) {
   const [data, setData] = useState<TList | null>(null)
   const [loading, setLoading] = useState(true)
   const [offset, setOffset] = useState(0)
+  const [categories, setCategories] = useState<string[]>([])
+  const [localCats, setLocalCats] = useState<Record<string, string | null>>({})
 
   const accountMap = Object.fromEntries(accounts.map(a => [a.id, a.legal_business_name]))
+
+  useEffect(() => {
+    api.categories().then(setCategories).catch(() => {})
+  }, [])
 
   useEffect(() => {
     setOffset(0)
@@ -51,6 +166,12 @@ export default function TransactionList({ accountId, start, end, category, searc
       .catch(() => setData(null))
       .finally(() => setLoading(false))
   }, [accountId, start, end, category, search, limit, offset])
+
+  const handleCategorySaved = (txnId: string, newCat: string | null) => {
+    setLocalCats(prev => ({ ...prev, [txnId]: newCat }))
+    // Also refresh categories list in case user added a new one
+    api.categories().then(setCategories).catch(() => {})
+  }
 
   if (loading && !data) return (
     <div className="flex items-center justify-center py-12">
@@ -68,6 +189,9 @@ export default function TransactionList({ accountId, start, end, category, searc
     if (!s) return '—'
     try { return format(parseISO(s), 'MMM d, yyyy') } catch { return s.slice(0, 10) }
   }
+
+  const getCategory = (t: Transaction): string | undefined =>
+    localCats.hasOwnProperty(t.id) ? (localCats[t.id] ?? undefined) : (t.mercury_category ?? undefined)
 
   return (
     <div>
@@ -99,7 +223,12 @@ export default function TransactionList({ accountId, start, end, category, searc
                   </td>
                 )}
                 <td className="py-3 px-3">
-                  <CategoryPill cat={t.mercury_category} />
+                  <CategoryCell
+                    txnId={t.id}
+                    current={getCategory(t)}
+                    categories={categories}
+                    onSaved={newCat => handleCategorySaved(t.id, newCat)}
+                  />
                 </td>
                 <td className="py-3 px-3 text-right whitespace-nowrap">
                   <AmountCell amount={t.amount} />
@@ -114,13 +243,18 @@ export default function TransactionList({ accountId, start, end, category, searc
       <div className="sm:hidden divide-y divide-zinc-100 dark:divide-zinc-800">
         {data.items.map((t: Transaction) => (
           <div key={t.id} className="px-4 py-3 flex items-start justify-between gap-3">
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="font-medium text-sm text-zinc-900 dark:text-zinc-50 truncate">
                 {t.counterparty_name || t.bank_description || '—'}
               </p>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-xs text-zinc-400 dark:text-zinc-500">{fmtDate(t.created_at)}</span>
-                <CategoryPill cat={t.mercury_category} />
+                <CategoryCell
+                  txnId={t.id}
+                  current={getCategory(t)}
+                  categories={categories}
+                  onSaved={newCat => handleCategorySaved(t.id, newCat)}
+                />
               </div>
             </div>
             <AmountCell amount={t.amount} />

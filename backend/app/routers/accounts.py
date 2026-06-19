@@ -1,6 +1,7 @@
 from datetime import date, timedelta, datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 
@@ -19,8 +20,8 @@ def list_accounts(
 ):
     return (
         db.query(Account)
-        .filter(Account.kind == "checking")
-        .order_by(Account.legal_business_name)
+        .filter(Account.kind == "checking", Account.is_excluded.is_(False))
+        .order_by(Account.sort_order, Account.legal_business_name)
         .all()
     )
 
@@ -30,8 +31,11 @@ def totals(
     db: Session = Depends(get_db),
     _: str = Depends(get_current_user),
 ):
-    """Aggregate balance across all checking accounts — used by the Cockpit header."""
-    accounts = db.query(Account).filter(Account.kind == "checking").all()
+    accounts = (
+        db.query(Account)
+        .filter(Account.kind == "checking", Account.is_excluded.is_(False))
+        .all()
+    )
     return {
         "total_available": round(sum(a.available_balance for a in accounts), 2),
         "total_current": round(sum(a.current_balance for a in accounts), 2),
@@ -47,6 +51,37 @@ def totals(
     }
 
 
+# Must come before /{id} to avoid routing conflict
+@router.patch("/reorder")
+def reorder_accounts(
+    items: list[dict],
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_user),
+):
+    for item in items:
+        acct = db.query(Account).filter(Account.id == item["id"]).first()
+        if acct:
+            acct.sort_order = item["sort_order"]
+    db.commit()
+    return {"ok": True}
+
+
+@router.patch("/{account_id}")
+def update_account(
+    account_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_user),
+):
+    acct = db.query(Account).filter(Account.id == account_id).first()
+    if not acct:
+        raise HTTPException(404, "Account not found")
+    if "is_excluded" in body:
+        acct.is_excluded = bool(body["is_excluded"])
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/balance-history")
 def balance_history(
     account_id: Optional[str] = Query(None, description="Filter to a single account"),
@@ -54,13 +89,10 @@ def balance_history(
     db: Session = Depends(get_db),
     _: str = Depends(get_current_user),
 ):
-    """
-    Reconstructs a daily balance series for the line chart.
-    Strategy: start from current known balance, then subtract forward movements
-    using posted transactions to back-fill the series.
-    Only 'sent' transactions are included (not pending/failed).
-    """
-    accounts = db.query(Account).filter(Account.kind == "checking")
+    accounts = (
+        db.query(Account)
+        .filter(Account.kind == "checking", Account.is_excluded.is_(False))
+    )
     if account_id:
         accounts = accounts.filter(Account.id == account_id)
     accounts = accounts.all()
@@ -70,7 +102,6 @@ def balance_history(
 
     start_dt = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Daily net amounts from posted transactions in the window
     rows = (
         db.query(
             func.date(Transaction.posted_at).label("day"),
@@ -87,7 +118,6 @@ def balance_history(
 
     daily_net = {row.day: float(row.net) for row in rows if row.day}
 
-    # Base = current balance minus everything that happened in the window
     period_sum = sum(daily_net.values())
     running = current_balance - period_sum
 
