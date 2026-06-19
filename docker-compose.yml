@@ -1,21 +1,28 @@
 version: "3.9"
 
-# Struttura Coolify: un unico docker-compose con backend + frontend (Phase 2).
-# Coolify punta al container frontend (nginx) che fa reverse proxy a /api → backend.
-# Per Phase 1 (solo backend), esponi direttamente la porta 8000.
+# Deploy su Coolify:
+# - Solo "frontend" espone una porta (80). Coolify punta qui con SSL + dominio.
+# - "backend" è interno alla rete Docker, non esposto all'esterno.
+# - nginx nel container frontend fa proxy /api/* → backend:8000
+# - Varia FRONTEND_PORT=80 per Coolify; usa 3080 per test locale.
 
 services:
   backend:
     build: ./backend
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ./data:/app/data   # SQLite persiste qui
+      - ./data:/app/data
     env_file: .env
     environment:
       DATABASE_URL: "sqlite:////app/data/phoenix_finance.db"
     restart: unless-stopped
+    # Nessuna porta esposta: raggiungibile solo da frontend via rete interna
 
-  # frontend: aggiunto in Phase 2
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-3080}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes: {}
