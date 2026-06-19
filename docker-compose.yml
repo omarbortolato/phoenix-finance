@@ -1,21 +1,12 @@
-version: "3.9"
-
-# Deploy su Coolify:
-# - Solo "frontend" espone una porta (80). Coolify punta qui con SSL + dominio.
-# - "backend" è interno alla rete Docker, non esposto all'esterno.
-# - nginx nel container frontend fa proxy /api/* → backend:8000
-# - Varia FRONTEND_PORT=80 per Coolify; usa 3080 per test locale.
-
 services:
   backend:
     build: ./backend
     volumes:
-      - ./data:/app/data
+      - sqlite_data:/app/data
     env_file: .env
     environment:
       DATABASE_URL: "sqlite:////app/data/phoenix_finance.db"
     restart: unless-stopped
-    # Nessuna porta esposta: raggiungibile solo da frontend via rete interna
 
   frontend:
     build: ./frontend
@@ -25,4 +16,5 @@ services:
       - backend
     restart: unless-stopped
 
-volumes: {}
+volumes:
+  sqlite_data:
