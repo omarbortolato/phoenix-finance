@@ -36,23 +36,25 @@ def me(username: str = Depends(get_current_user)):
 
 
 class ForgotRequest(BaseModel):
-    username: str
+    email: str
 
 
 @router.post("/forgot-password")
 def forgot_password(req: ForgotRequest, background_tasks: BackgroundTasks):
     if not settings.smtp_host:
-        raise HTTPException(503, "Email not configured on this server")
+        raise HTTPException(503, "SMTP non configurato: aggiungi SMTP_HOST e le altre variabili su Coolify.")
 
-    username = req.username.lower().strip()
-    emails = {"omar": settings.auth_email_omar, "emanuel": settings.auth_email_emanuel}
-    passwords = {"omar": settings.auth_password_omar, "emanuel": settings.auth_password_emanuel}
+    incoming = req.email.lower().strip()
 
-    to_email = emails.get(username)
-    password = passwords.get(username)
+    # Build email→(username, password) map from env
+    users = {
+        settings.auth_email_omar.lower(): ("omar", settings.auth_password_omar),
+        settings.auth_email_emanuel.lower(): ("emanuel", settings.auth_password_emanuel),
+    }
+    match = users.get(incoming)
 
-    # Don't reveal whether the username exists
-    if to_email and password:
+    if match:
+        username, password = match
         from app.email_client import send_email
         body = (
             f"Ciao {username.capitalize()},\n\n"
@@ -62,6 +64,7 @@ def forgot_password(req: ForgotRequest, background_tasks: BackgroundTasks):
             "Se non hai richiesto questo messaggio, ignoralo.\n\n"
             "— Phoenix Finance"
         )
-        background_tasks.add_task(send_email, to_email, "Phoenix Finance — recupero password", body)
+        background_tasks.add_task(send_email, incoming, "Phoenix Finance — recupero password", body)
 
-    return {"detail": "Se lo username è registrato, riceverai un'email con le credenziali."}
+    # Always return the same message to avoid user enumeration
+    return {"detail": "Se l'email è registrata, riceverai le credenziali a breve."}

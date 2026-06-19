@@ -14,8 +14,9 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
 
   const [showForgot, setShowForgot] = useState(false)
-  const [forgotUser, setForgotUser] = useState('')
+  const [forgotEmail, setForgotEmail] = useState('')
   const [forgotMsg, setForgotMsg] = useState('')
+  const [forgotError, setForgotError] = useState('')
   const [forgotLoading, setForgotLoading] = useState(false)
 
   const submit = async (e: FormEvent) => {
@@ -36,11 +37,17 @@ export default function Login() {
     e.preventDefault()
     setForgotLoading(true)
     setForgotMsg('')
+    setForgotError('')
     try {
-      const res = await api.forgotPassword(forgotUser.trim())
+      const res = await api.forgotPassword(forgotEmail.trim())
       setForgotMsg(res.detail)
-    } catch {
-      setForgotMsg('Errore: email non configurata sul server.')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : ''
+      if (msg.includes('503')) {
+        setForgotError('SMTP non configurato sul server. Aggiungi SMTP_HOST e le altre variabili su Coolify.')
+      } else {
+        setForgotError('Errore durante l\'invio. Riprova.')
+      }
     } finally {
       setForgotLoading(false)
     }
@@ -136,7 +143,7 @@ export default function Login() {
 
             <div className="mt-4 text-center">
               <button
-                onClick={() => { setShowForgot(true); setForgotUser(username) }}
+                onClick={() => { setShowForgot(true); setForgotEmail('') }}
                 className="text-sm text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
               >
                 Password dimenticata?
@@ -148,39 +155,43 @@ export default function Login() {
             <form onSubmit={submitForgot} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
-                  Il tuo username
+                  La tua email
                 </label>
                 <input
-                  type="text"
-                  value={forgotUser}
-                  onChange={e => setForgotUser(e.target.value)}
+                  type="email"
+                  value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)}
+                  autoFocus
                   required
                   className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700
                     bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50
                     placeholder-zinc-400 dark:placeholder-zinc-500
                     focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent
                     transition-colors text-sm"
-                  placeholder="omar"
+                  placeholder="tua@email.com"
                 />
               </div>
 
               {forgotMsg && (
                 <p className="text-sm text-emerald-600 dark:text-emerald-400">{forgotMsg}</p>
               )}
+              {forgotError && (
+                <p className="text-sm text-red-500 dark:text-red-400">{forgotError}</p>
+              )}
 
               <button
                 type="submit"
-                disabled={forgotLoading || !forgotUser.trim()}
+                disabled={forgotLoading || !forgotEmail.trim()}
                 className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60
                   text-white font-medium rounded-lg transition-colors text-sm"
               >
-                {forgotLoading ? 'Invio…' : 'Invia password via email'}
+                {forgotLoading ? 'Invio…' : 'Invia credenziali via email'}
               </button>
             </form>
 
             <div className="text-center">
               <button
-                onClick={() => { setShowForgot(false); setForgotMsg('') }}
+                onClick={() => { setShowForgot(false); setForgotMsg(''); setForgotError('') }}
                 className="text-sm text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
               >
                 ← Torna al login
