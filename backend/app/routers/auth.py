@@ -36,7 +36,7 @@ def me(username: str = Depends(get_current_user)):
 
 
 class ForgotRequest(BaseModel):
-    email: str
+    identifier: str  # username oppure email
 
 
 @router.post("/forgot-password")
@@ -44,27 +44,40 @@ def forgot_password(req: ForgotRequest, background_tasks: BackgroundTasks):
     if not settings.smtp_host:
         raise HTTPException(503, "SMTP non configurato: aggiungi SMTP_HOST e le altre variabili su Coolify.")
 
-    incoming = req.email.lower().strip()
+    incoming = req.identifier.lower().strip()
 
-    # Build email→(username, password) map from env
-    users = {
-        settings.auth_email_omar.lower(): ("omar", settings.auth_password_omar),
-        settings.auth_email_emanuel.lower(): ("emanuel", settings.auth_password_emanuel),
+    # username → (recovery_email, password)
+    by_username = {
+        "omar": (settings.auth_email_omar, settings.auth_password_omar),
+        "emanuel": (settings.auth_email_emanuel, settings.auth_password_emanuel),
     }
-    match = users.get(incoming)
+    # email → username (only if email is configured)
+    by_email = {
+        v[0].lower(): k
+        for k, v in by_username.items()
+        if v[0]
+    }
 
-    if match:
-        username, password = match
-        from app.email_client import send_email
-        body = (
-            f"Ciao {username.capitalize()},\n\n"
-            f"Hai richiesto il recupero delle credenziali di Phoenix Finance.\n\n"
-            f"Username: {username}\n"
-            f"Password: {password}\n\n"
-            "Se non hai richiesto questo messaggio, ignoralo.\n\n"
-            "— Phoenix Finance"
-        )
-        background_tasks.add_task(send_email, incoming, "Phoenix Finance — recupero password", body)
+    # Resolve: try username first, then email
+    if incoming in by_username:
+        username = incoming
+    elif incoming in by_email:
+        username = by_email[incoming]
+    else:
+        return {"detail": "Se i dati sono corretti, riceverai le credenziali a breve."}
 
-    # Always return the same message to avoid user enumeration
-    return {"detail": "Se l'email è registrata, riceverai le credenziali a breve."}
+    to_email, password = by_username[username]
+    if not to_email:
+        raise HTTPException(422, "Nessuna email configurata per questo account. Aggiungi AUTH_EMAIL_OMAR o AUTH_EMAIL_EMANUEL su Coolify.")
+
+    from app.email_client import send_email
+    body = (
+        f"Ciao {username.capitalize()},\n\n"
+        f"Hai richiesto il recupero delle credenziali di Phoenix Finance.\n\n"
+        f"Username: {username}\n"
+        f"Password: {password}\n\n"
+        "Se non hai richiesto questo messaggio, ignoralo.\n\n"
+        "— Phoenix Finance"
+    )
+    background_tasks.add_task(send_email, to_email, "Phoenix Finance — recupero password", body)
+    return {"detail": "Credenziali inviate all'email associata all'account."}

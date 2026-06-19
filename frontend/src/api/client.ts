@@ -99,8 +99,8 @@ export const api = {
   login: (username: string, password: string) =>
     req<{ username: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => req('/auth/logout', { method: 'POST' }),
-  forgotPassword: (email: string) =>
-    req<{ detail: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  forgotPassword: (identifier: string) =>
+    req<{ detail: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ identifier }) }),
 
   accounts: () => req<Account[]>('/accounts'),
   totals: () => req<AccountTotals>('/accounts/totals'),

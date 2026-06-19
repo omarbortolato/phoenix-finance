@@ -14,7 +14,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
 
   const [showForgot, setShowForgot] = useState(false)
-  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotId, setForgotId] = useState('')
   const [forgotMsg, setForgotMsg] = useState('')
   const [forgotError, setForgotError] = useState('')
   const [forgotLoading, setForgotLoading] = useState(false)
@@ -39,12 +39,14 @@ export default function Login() {
     setForgotMsg('')
     setForgotError('')
     try {
-      const res = await api.forgotPassword(forgotEmail.trim())
+      const res = await api.forgotPassword(forgotId.trim())
       setForgotMsg(res.detail)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : ''
       if (msg.includes('503')) {
-        setForgotError('SMTP non configurato sul server. Aggiungi SMTP_HOST e le altre variabili su Coolify.')
+        setForgotError('SMTP non configurato sul server. Aggiungi le variabili SMTP su Coolify.')
+      } else if (msg.includes('422')) {
+        setForgotError('Nessuna email configurata per questo account. Aggiungi AUTH_EMAIL_OMAR o AUTH_EMAIL_EMANUEL su Coolify.')
       } else {
         setForgotError('Errore durante l\'invio. Riprova.')
       }
@@ -143,7 +145,7 @@ export default function Login() {
 
             <div className="mt-4 text-center">
               <button
-                onClick={() => { setShowForgot(true); setForgotEmail('') }}
+                onClick={() => { setShowForgot(true); setForgotId('') }}
                 className="text-sm text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
               >
                 Password dimenticata?
@@ -155,12 +157,12 @@ export default function Login() {
             <form onSubmit={submitForgot} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
-                  La tua email
+                  Username o email
                 </label>
                 <input
-                  type="email"
-                  value={forgotEmail}
-                  onChange={e => setForgotEmail(e.target.value)}
+                  type="text"
+                  value={forgotId}
+                  onChange={e => setForgotId(e.target.value)}
                   autoFocus
                   required
                   className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700
@@ -168,7 +170,7 @@ export default function Login() {
                     placeholder-zinc-400 dark:placeholder-zinc-500
                     focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent
                     transition-colors text-sm"
-                  placeholder="tua@email.com"
+                  placeholder="omar oppure tua@email.com"
                 />
               </div>
 
@@ -181,7 +183,7 @@ export default function Login() {
 
               <button
                 type="submit"
-                disabled={forgotLoading || !forgotEmail.trim()}
+                disabled={forgotLoading || !forgotId.trim()}
                 className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60
                   text-white font-medium rounded-lg transition-colors text-sm"
               >
@@ -191,7 +193,7 @@ export default function Login() {
 
             <div className="text-center">
               <button
-                onClick={() => { setShowForgot(false); setForgotMsg(''); setForgotError('') }}
+                onClick={() => { setShowForgot(false); setForgotMsg(''); setForgotError(''); setForgotId('') }}
                 className="text-sm text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
               >
                 ← Torna al login
