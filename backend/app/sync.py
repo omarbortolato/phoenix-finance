@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from dateutil.parser import parse as parse_iso
 
 from .config import settings
-from .models import Account, Transaction, SyncLog
+from .models import Account, AccountAlert, Transaction, SyncLog
 from .mercury_client import MercuryClient
 
 
@@ -139,9 +139,47 @@ async def sync_all(db: Session) -> dict:
             ))
             db.commit()
 
+    # Check balance-threshold alerts for all synced accounts
+    if settings.smtp_host:
+        _check_alerts(db, list(seen_account_ids))
+
     return {
         "accounts_synced": accounts_synced,
         "total_transactions_fetched": total_fetched,
         "total_transactions_new": total_new,
         "errors": errors,
     }
+
+
+def _check_alerts(db: Session, account_ids: list[str]) -> None:
+    from .email_client import send_email
+
+    now = datetime.now(timezone.utc)
+    cooldown = now - timedelta(hours=24)
+
+    for acc_id in account_ids:
+        alert = db.query(AccountAlert).filter(AccountAlert.account_id == acc_id).first()
+        if not alert:
+            continue
+        account = db.get(Account, acc_id)
+        if not account:
+            continue
+        if account.available_balance >= alert.threshold:
+            continue
+        if alert.last_sent_at and alert.last_sent_at > cooldown:
+            continue  # already notified in the last 24h
+
+        last4 = (account.account_number or "")[-4:] or "????"
+        try:
+            send_email(
+                alert.email,
+                f"[Phoenix Finance] Soglia di saldo raggiunta — {account.legal_business_name}",
+                f"Hai raggiunto la soglia di ${alert.threshold:,.2f} "
+                f"sull'account {account.legal_business_name} (••{last4}).\n\n"
+                f"Saldo disponibile attuale: ${account.available_balance:,.2f}\n\n"
+                "— Phoenix Finance"
+            )
+            alert.last_sent_at = now
+            db.commit()
+        except Exception:
+            pass  # don't fail the sync if email fails

@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
+import { api } from '../api/client'
 
 export default function Login() {
   const { login } = useAuth()
@@ -11,6 +12,11 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotUser, setForgotUser] = useState('')
+  const [forgotMsg, setForgotMsg] = useState('')
+  const [forgotLoading, setForgotLoading] = useState(false)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -23,6 +29,20 @@ export default function Login() {
       setError('Invalid credentials')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const submitForgot = async (e: FormEvent) => {
+    e.preventDefault()
+    setForgotLoading(true)
+    setForgotMsg('')
+    try {
+      const res = await api.forgotPassword(forgotUser.trim())
+      setForgotMsg(res.detail)
+    } catch {
+      setForgotMsg('Errore: email non configurata sul server.')
+    } finally {
+      setForgotLoading(false)
     }
   }
 
@@ -59,58 +79,115 @@ export default function Login() {
           </p>
         </div>
 
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
-              Username
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              autoComplete="username"
-              required
-              className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700
-                bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50
-                placeholder-zinc-400 dark:placeholder-zinc-500
-                focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent
-                transition-colors text-sm"
-              placeholder="omar"
-            />
+        {!showForgot ? (
+          <>
+            <form onSubmit={submit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  Username
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  autoComplete="username"
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700
+                    bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50
+                    placeholder-zinc-400 dark:placeholder-zinc-500
+                    focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent
+                    transition-colors text-sm"
+                  placeholder="omar"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700
+                    bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50
+                    placeholder-zinc-400 dark:placeholder-zinc-500
+                    focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent
+                    transition-colors text-sm"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              {error && (
+                <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60
+                  text-white font-medium rounded-lg transition-colors text-sm"
+              >
+                {loading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
+
+            <div className="mt-4 text-center">
+              <button
+                onClick={() => { setShowForgot(true); setForgotUser(username) }}
+                className="text-sm text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+              >
+                Password dimenticata?
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-4">
+            <form onSubmit={submitForgot} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  Il tuo username
+                </label>
+                <input
+                  type="text"
+                  value={forgotUser}
+                  onChange={e => setForgotUser(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700
+                    bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50
+                    placeholder-zinc-400 dark:placeholder-zinc-500
+                    focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent
+                    transition-colors text-sm"
+                  placeholder="omar"
+                />
+              </div>
+
+              {forgotMsg && (
+                <p className="text-sm text-emerald-600 dark:text-emerald-400">{forgotMsg}</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={forgotLoading || !forgotUser.trim()}
+                className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60
+                  text-white font-medium rounded-lg transition-colors text-sm"
+              >
+                {forgotLoading ? 'Invio…' : 'Invia password via email'}
+              </button>
+            </form>
+
+            <div className="text-center">
+              <button
+                onClick={() => { setShowForgot(false); setForgotMsg('') }}
+                className="text-sm text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+              >
+                ← Torna al login
+              </button>
+            </div>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-              className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700
-                bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-50
-                placeholder-zinc-400 dark:placeholder-zinc-500
-                focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent
-                transition-colors text-sm"
-              placeholder="••••••••"
-            />
-          </div>
-
-          {error && (
-            <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60
-              text-white font-medium rounded-lg transition-colors text-sm"
-          >
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+        )}
       </div>
     </div>
   )

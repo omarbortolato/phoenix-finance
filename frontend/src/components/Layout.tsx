@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -28,6 +28,44 @@ export default function Layout({ children, accounts: propAccounts = [], onSync, 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [sidebarAccounts, setSidebarAccounts] = useState<SidebarAccount[]>(propAccounts)
   const [hovered, setHovered] = useState<string | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    parseInt(localStorage.getItem('sidebar-width') || '224')
+  )
+  const widthRef = useRef(sidebarWidth)
+  const isResizing = useRef(false)
+  const resizeStartX = useRef(0)
+  const resizeStartW = useRef(0)
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isResizing.current) return
+      const w = Math.max(160, Math.min(380, resizeStartW.current + e.clientX - resizeStartX.current))
+      widthRef.current = w
+      setSidebarWidth(w)
+    }
+    const onUp = () => {
+      if (!isResizing.current) return
+      isResizing.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      localStorage.setItem('sidebar-width', String(widthRef.current))
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizing.current = true
+    resizeStartX.current = e.clientX
+    resizeStartW.current = sidebarWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
 
   // Sync with parent whenever the account list changes (e.g. after a data sync)
   useEffect(() => {
@@ -153,7 +191,10 @@ export default function Layout({ children, accounts: propAccounts = [], onSync, 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:flex-col w-56 flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+      <aside
+        className="hidden md:flex md:flex-col relative flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+        style={{ width: sidebarWidth }}
+      >
         <div className="flex items-center gap-2.5 px-4 py-5 border-b border-zinc-100 dark:border-zinc-800">
           <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-sm">P</span>
@@ -200,6 +241,12 @@ export default function Layout({ children, accounts: propAccounts = [], onSync, 
             Sign out — {user}
           </button>
         </div>
+
+        {/* Drag-to-resize handle */}
+        <div
+          onMouseDown={startResize}
+          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-violet-400 dark:hover:bg-violet-600 transition-colors"
+        />
       </aside>
 
       {/* Main */}

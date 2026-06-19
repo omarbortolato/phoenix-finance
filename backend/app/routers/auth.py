@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from pydantic import BaseModel
 from app.schemas import LoginRequest
 from app.auth import verify_password, create_access_token, get_current_user
 from app.config import settings
@@ -16,7 +17,7 @@ def login(req: LoginRequest, response: Response):
         key="access_token",
         value=token,
         httponly=True,
-        secure=settings.cookie_secure,  # set COOKIE_SECURE=false for local HTTP dev
+        secure=settings.cookie_secure,
         samesite="lax",
         max_age=60 * 60 * 24 * 7,
     )
@@ -31,5 +32,36 @@ def logout(response: Response):
 
 @router.get("/me")
 def me(username: str = Depends(get_current_user)):
-    """Frontend uses this to check if the session is still valid."""
     return {"username": username}
+
+
+class ForgotRequest(BaseModel):
+    username: str
+
+
+@router.post("/forgot-password")
+def forgot_password(req: ForgotRequest, background_tasks: BackgroundTasks):
+    if not settings.smtp_host:
+        raise HTTPException(503, "Email not configured on this server")
+
+    username = req.username.lower().strip()
+    emails = {"omar": settings.auth_email_omar, "emanuel": settings.auth_email_emanuel}
+    passwords = {"omar": settings.auth_password_omar, "emanuel": settings.auth_password_emanuel}
+
+    to_email = emails.get(username)
+    password = passwords.get(username)
+
+    # Don't reveal whether the username exists
+    if to_email and password:
+        from app.email_client import send_email
+        body = (
+            f"Ciao {username.capitalize()},\n\n"
+            f"Hai richiesto il recupero delle credenziali di Phoenix Finance.\n\n"
+            f"Username: {username}\n"
+            f"Password: {password}\n\n"
+            "Se non hai richiesto questo messaggio, ignoralo.\n\n"
+            "— Phoenix Finance"
+        )
+        background_tasks.add_task(send_email, to_email, "Phoenix Finance — recupero password", body)
+
+    return {"detail": "Se lo username è registrato, riceverai un'email con le credenziali."}

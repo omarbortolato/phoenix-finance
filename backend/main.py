@@ -23,6 +23,7 @@ def _migrate():
         "ALTER TABLE accounts ADD COLUMN sort_order INTEGER DEFAULT 0",
         "ALTER TABLE accounts ADD COLUMN is_excluded BOOLEAN DEFAULT 0",
         "CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, color TEXT)",
+        "CREATE TABLE IF NOT EXISTS account_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id TEXT NOT NULL UNIQUE REFERENCES accounts(id), threshold REAL NOT NULL, email TEXT NOT NULL, last_sent_at DATETIME)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

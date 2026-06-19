@@ -5,9 +5,10 @@ from pydantic import BaseModel
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Account, Transaction
+from app.models import Account, AccountAlert, Transaction
 from app.schemas import AccountOut
 
 router = APIRouter()
@@ -80,6 +81,58 @@ def update_account(
         acct.is_excluded = bool(body["is_excluded"])
     db.commit()
     return {"ok": True}
+
+
+class AlertUpsert(BaseModel):
+    threshold: float
+    email: str
+
+
+@router.get("/{account_id}/alert")
+def get_alert(
+    account_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_user),
+):
+    alert = db.query(AccountAlert).filter(AccountAlert.account_id == account_id).first()
+    if not alert:
+        return None
+    return {
+        "threshold": alert.threshold,
+        "email": alert.email,
+        "last_sent_at": alert.last_sent_at,
+    }
+
+
+@router.put("/{account_id}/alert")
+def upsert_alert(
+    account_id: str,
+    body: AlertUpsert,
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_user),
+):
+    acct = db.query(Account).filter(Account.id == account_id).first()
+    if not acct:
+        raise HTTPException(404, "Account not found")
+    alert = db.query(AccountAlert).filter(AccountAlert.account_id == account_id).first()
+    if alert:
+        alert.threshold = body.threshold
+        alert.email = body.email
+    else:
+        alert = AccountAlert(account_id=account_id, threshold=body.threshold, email=body.email)
+        db.add(alert)
+    db.commit()
+    return {"threshold": alert.threshold, "email": alert.email}
+
+
+@router.delete("/{account_id}/alert", status_code=204)
+def delete_alert(
+    account_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_user),
+):
+    db.query(AccountAlert).filter(AccountAlert.account_id == account_id).delete()
+    db.commit()
 
 
 @router.get("/balance-history")

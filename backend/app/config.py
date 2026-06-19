@@ -19,6 +19,18 @@ class Settings(BaseSettings):
     # Mercury
     mercury_excluded_accounts: str = "Smylife LLC"
 
+    # SMTP (optional — enables forgot-password and balance alerts)
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_ssl: bool = False  # set True for port 465
+
+    # Per-user recovery email
+    auth_email_omar: str = ""
+    auth_email_emanuel: str = ""
+
     class Config:
         env_file = ".env"
         extra = "allow"  # ignore unknown keys from the shared .env

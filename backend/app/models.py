@@ -56,6 +56,19 @@ class Category(Base):
     color = Column(String)
 
 
+class AccountAlert(Base):
+    """Balance-threshold email alert per account."""
+    __tablename__ = "account_alerts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=False, unique=True)
+    threshold = Column(Float, nullable=False)
+    email = Column(String, nullable=False)
+    last_sent_at = Column(DateTime(timezone=True))
+
+    account = relationship("Account")
+
+
 class SyncLog(Base):
     __tablename__ = "sync_log"
 

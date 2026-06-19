@@ -86,13 +86,21 @@ export interface SyncResult {
   errors: string[]
 }
 
+export interface AccountAlert {
+  threshold: number
+  email: string
+  last_sent_at?: string | null
+}
+
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const api = {
-  me: () => req<{ username: string }>('/auth/me', {}, true), // skipRedirect: 401 sulla login page è normale
+  me: () => req<{ username: string }>('/auth/me', {}, true),
   login: (username: string, password: string) =>
     req<{ username: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => req('/auth/logout', { method: 'POST' }),
+  forgotPassword: (username: string) =>
+    req<{ detail: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ username }) }),
 
   accounts: () => req<Account[]>('/accounts'),
   totals: () => req<AccountTotals>('/accounts/totals'),
@@ -121,6 +129,13 @@ export const api = {
     req('/accounts/reorder', { method: 'PATCH', body: JSON.stringify(items) }),
   excludeAccount: (id: string) =>
     req(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify({ is_excluded: true }) }),
+
+  getAlert: (accountId: string) =>
+    req<AccountAlert | null>(`/accounts/${accountId}/alert`),
+  saveAlert: (accountId: string, threshold: number, email: string) =>
+    req<AccountAlert>(`/accounts/${accountId}/alert`, { method: 'PUT', body: JSON.stringify({ threshold, email }) }),
+  deleteAlert: (accountId: string) =>
+    req(`/accounts/${accountId}/alert`, { method: 'DELETE' }),
 
   sync: () => req<SyncResult>('/sync', { method: 'POST' }),
 }
