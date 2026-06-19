@@ -1,46 +1,21 @@
 version: "3.9"
 
+# Struttura Coolify: un unico docker-compose con backend + frontend (Phase 2).
+# Coolify punta al container frontend (nginx) che fa reverse proxy a /api → backend.
+# Per Phase 1 (solo backend), esponi direttamente la porta 8000.
+
 services:
-  postgres:
-    image: postgres:16-alpine
+  backend:
+    build: ./backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data   # SQLite persiste qui
     env_file: .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      DATABASE_URL: "sqlite:////app/data/phoenix_finance.db"
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
+  # frontend: aggiunto in Phase 2
 
-  qdrant:
-    image: qdrant/qdrant:latest
-    volumes:
-      - qdrant_data:/qdrant/storage
-    restart: unless-stopped
-
-  concierge:
-    build: ./services/concierge
-    env_file: .env
-    ports:
-      - "${CONCIERGE_PORT}:8000"
-    depends_on:
-      - postgres
-      - redis
-    restart: unless-stopped
-
-  analytics:
-    build: ./services/analytics
-    env_file: .env
-    ports:
-      - "${ANALYTICS_PORT}:8040"
-    depends_on:
-      - postgres
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-  qdrant_data:
+volumes: {}
