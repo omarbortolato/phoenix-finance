@@ -3,7 +3,6 @@ services:
     build: ./backend
     volumes:
       - sqlite_data:/app/data
-    env_file: .env
     environment:
       DATABASE_URL: "sqlite:////app/data/phoenix_finance.db"
     restart: unless-stopped
