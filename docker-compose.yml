@@ -9,8 +9,10 @@ services:
 
   frontend:
     build: ./frontend
-    ports:
-      - "${FRONTEND_PORT:-3080}:80"
+    # Nessun ports: Coolify usa Traefik come reverse proxy.
+    # Il dominio va configurato nella UI di Coolify → frontend service → Domain.
+    expose:
+      - "80"
     depends_on:
       - backend
     restart: unless-stopped
