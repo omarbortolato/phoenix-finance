@@ -1,14 +1,15 @@
 // All API calls go through /api (Vite proxy in dev, nginx in prod)
 const BASE = '/api'
 
-async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function req<T>(path: string, init: RequestInit = {}, skipRedirect = false): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...init.headers },
   })
   if (res.status === 401) {
-    window.location.href = '/login'
+    // skipRedirect=true per /auth/me: essere non-autenticati sulla login page è normale
+    if (!skipRedirect) window.location.href = '/login'
     throw new Error('Unauthorized')
   }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
@@ -86,7 +87,7 @@ export interface SyncResult {
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const api = {
-  me: () => req<{ username: string }>('/auth/me'),
+  me: () => req<{ username: string }>('/auth/me', {}, true), // skipRedirect: 401 sulla login page è normale
   login: (username: string, password: string) =>
     req<{ username: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => req('/auth/logout', { method: 'POST' }),
