@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, Project, Transaction, TransactionList as TList, formatCategory, getCategoryColor, formatUSD } from '../api/client'
+import { api, Project, ProjectPhase, Transaction, TransactionList as TList, formatCategory, getCategoryColor, formatUSD } from '../api/client'
 import { format, parseISO } from 'date-fns'
 
 interface Props {
   accountId?: string
   projectId?: string
+  phases?: ProjectPhase[]
   start?: string
   end?: string
   category?: string
@@ -211,7 +212,61 @@ function ProjectCell({
   return <ProjectPill label={project ? project.code : 'No project'} onClick={() => setEditing(true)} />
 }
 
-export default function TransactionList({ accountId, projectId, start, end, category, search, limit = 50, showAccount = false, accounts = [] }: Props) {
+function PhaseCell({
+  txnId, current, phases, onSaved,
+}: {
+  txnId: string
+  current?: number | null
+  phases: ProjectPhase[]
+  onSaved: (newPhaseId: number | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const selectRef = useRef<HTMLSelectElement>(null)
+
+  useEffect(() => {
+    if (editing) selectRef.current?.focus()
+  }, [editing])
+
+  const save = async (val: number | null) => {
+    setSaving(true)
+    try {
+      await api.setTransactionPhase(txnId, val)
+      onSaved(val)
+    } finally {
+      setSaving(false)
+      setEditing(false)
+    }
+  }
+
+  if (saving) {
+    return <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+  }
+
+  if (editing) {
+    return (
+      <select
+        ref={selectRef}
+        defaultValue={current ?? ''}
+        onChange={e => save(e.target.value ? parseInt(e.target.value) : null)}
+        onBlur={() => setEditing(false)}
+        className="text-xs border border-violet-400 rounded-lg px-2 py-1
+          bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300
+          focus:outline-none focus:ring-1 focus:ring-violet-500"
+      >
+        <option value="">No phase</option>
+        {phases.map(p => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+    )
+  }
+
+  const phase = phases.find(p => p.id === current)
+  return <ProjectPill label={phase ? phase.name : 'No phase'} onClick={() => setEditing(true)} />
+}
+
+export default function TransactionList({ accountId, projectId, phases = [], start, end, category, search, limit = 50, showAccount = false, accounts = [] }: Props) {
   const [data, setData] = useState<TList | null>(null)
   const [loading, setLoading] = useState(true)
   const [offset, setOffset] = useState(0)
@@ -219,6 +274,7 @@ export default function TransactionList({ accountId, projectId, start, end, cate
   const [projects, setProjects] = useState<Project[]>([])
   const [localCats, setLocalCats] = useState<Record<string, string | null>>({})
   const [localProjects, setLocalProjects] = useState<Record<string, string | null>>({})
+  const [localPhases, setLocalPhases] = useState<Record<string, number | null>>({})
 
   const accountMap = Object.fromEntries(accounts.map(a => [a.id, a.legal_business_name]))
 
@@ -249,6 +305,10 @@ export default function TransactionList({ accountId, projectId, start, end, cate
     setLocalProjects(prev => ({ ...prev, [txnId]: newProjectId }))
   }
 
+  const handlePhaseSaved = (txnId: string, newPhaseId: number | null) => {
+    setLocalPhases(prev => ({ ...prev, [txnId]: newPhaseId }))
+  }
+
   if (loading && !data) return (
     <div className="flex items-center justify-center py-12">
       <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
@@ -272,6 +332,11 @@ export default function TransactionList({ accountId, projectId, start, end, cate
   const getProjectId = (t: Transaction): string | null | undefined =>
     localProjects.hasOwnProperty(t.id) ? localProjects[t.id] : t.project_id
 
+  const getPhaseId = (t: Transaction): number | null | undefined =>
+    localPhases.hasOwnProperty(t.id) ? localPhases[t.id] : t.phase_id
+
+  const showPhaseColumn = !!projectId && phases.length > 0
+
   return (
     <div>
       {/* Desktop table */}
@@ -284,6 +349,7 @@ export default function TransactionList({ accountId, projectId, start, end, cate
               {showAccount && <th className="text-left py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Account</th>}
               <th className="text-left py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Category</th>
               <th className="text-left py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Project</th>
+              {showPhaseColumn && <th className="text-left py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Phase</th>}
               <th className="text-right py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Amount</th>
             </tr>
           </thead>
@@ -318,6 +384,16 @@ export default function TransactionList({ accountId, projectId, start, end, cate
                     onSaved={newProjectId => handleProjectSaved(t.id, newProjectId)}
                   />
                 </td>
+                {showPhaseColumn && (
+                  <td className="py-3 px-3">
+                    <PhaseCell
+                      txnId={t.id}
+                      current={getPhaseId(t)}
+                      phases={phases}
+                      onSaved={newPhaseId => handlePhaseSaved(t.id, newPhaseId)}
+                    />
+                  </td>
+                )}
                 <td className="py-3 px-3 text-right whitespace-nowrap">
                   <AmountCell amount={t.amount} />
                 </td>
@@ -349,6 +425,14 @@ export default function TransactionList({ accountId, projectId, start, end, cate
                   projects={projects}
                   onSaved={newProjectId => handleProjectSaved(t.id, newProjectId)}
                 />
+                {showPhaseColumn && (
+                  <PhaseCell
+                    txnId={t.id}
+                    current={getPhaseId(t)}
+                    phases={phases}
+                    onSaved={newPhaseId => handlePhaseSaved(t.id, newPhaseId)}
+                  />
+                )}
               </div>
             </div>
             <AmountCell amount={t.amount} />

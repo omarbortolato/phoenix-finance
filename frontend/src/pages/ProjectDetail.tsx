@@ -91,7 +91,7 @@ export default function ProjectDetail() {
 
         {tab === 'gantt' && <GanttTab projectId={id} phases={phases} onChange={load} />}
         {tab === 'burndown' && <BurndownTab projectId={id} />}
-        {tab === 'transactions' && <TransactionsTab projectId={id} accounts={sidebarAccounts} />}
+        {tab === 'transactions' && <TransactionsTab projectId={id} accounts={sidebarAccounts} phases={phases} />}
       </div>
     </Layout>
   )
@@ -334,11 +334,33 @@ function ProjectAlertPanel({ projectId }: { projectId: string }) {
 // ─── Gantt tab ──────────────────────────────────────────────────────────────
 
 function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: ProjectPhase[]; onChange: () => void }) {
+  const navigate = useNavigate()
   const [syncing, setSyncing] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ name: '', budget: '', planned_start: '', planned_end: '' })
 
   const syncTemplates = async () => {
     setSyncing(true)
-    try { await api.syncPhasesFromTemplates(projectId); onChange() } finally { setSyncing(false) }
+    try {
+      const res = await api.syncPhasesFromTemplates(projectId)
+      if (res.created === 0) {
+        setAdding(true) // no templates configured (or all already added) — nudge straight into manual add
+      }
+      onChange()
+    } finally { setSyncing(false) }
+  }
+
+  const addPhase = async () => {
+    if (!form.name.trim()) return
+    await api.createPhase(projectId, {
+      name: form.name.trim(),
+      budget: parseFloat(form.budget) || 0,
+      planned_start: form.planned_start || undefined,
+      planned_end: form.planned_end || undefined,
+    })
+    setForm({ name: '', budget: '', planned_start: '', planned_end: '' })
+    setAdding(false)
+    onChange()
   }
 
   const updatePhase = async (phase: ProjectPhase, patch: Partial<ProjectPhase>) => {
@@ -346,16 +368,46 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
     onChange()
   }
 
+  const field = 'text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+
   return (
     <div className="space-y-4">
       <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-5">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Timeline</h2>
-          <button onClick={syncTemplates} disabled={syncing}
-            className="text-xs text-violet-600 hover:text-violet-700 disabled:opacity-40 font-medium">
-            {syncing ? 'Syncing…' : 'Sync phases from templates'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('/projects/settings')}
+              className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium">
+              Configure phase templates
+            </button>
+            <button onClick={syncTemplates} disabled={syncing}
+              className="text-xs text-violet-600 hover:text-violet-700 disabled:opacity-40 font-medium">
+              {syncing ? 'Syncing…' : 'Sync phases from templates'}
+            </button>
+            <button onClick={() => setAdding(v => !v)}
+              className="text-xs text-violet-600 hover:text-violet-700 font-medium">
+              {adding ? 'Cancel' : '+ Add phase'}
+            </button>
+          </div>
         </div>
+
+        {adding && (
+          <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/60">
+            <input className={field} placeholder="Phase name" value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })} />
+            <input type="number" className={`${field} w-28`} placeholder="Budget $" value={form.budget}
+              onChange={e => setForm({ ...form, budget: e.target.value })} />
+            <input type="date" className={field} title="Planned start" value={form.planned_start}
+              onChange={e => setForm({ ...form, planned_start: e.target.value })} />
+            <input type="date" className={field} title="Planned end" value={form.planned_end}
+              onChange={e => setForm({ ...form, planned_end: e.target.value })} />
+            <button onClick={addPhase} disabled={!form.name.trim()}
+              className="px-3 py-1 text-xs rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white font-medium transition-colors">
+              Add
+            </button>
+          </div>
+        )}
+
         <ProjectGantt phases={phases} />
       </div>
 
@@ -369,7 +421,7 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
               <div key={phase.id} className="px-5 py-3 flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200 w-32 flex-shrink-0 truncate">{phase.name}</span>
                 <select value={phase.status} onChange={e => updatePhase(phase, { status: e.target.value as ProjectPhase['status'] })}
-                  className="text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
+                  className={field}>
                   <option value="not_started">Not started</option>
                   <option value="in_progress">In progress</option>
                   <option value="completed">Completed</option>
@@ -377,16 +429,22 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
                 </select>
                 <input type="date" value={phase.planned_start?.slice(0, 10) || ''}
                   onChange={e => updatePhase(phase, { planned_start: e.target.value || undefined })}
-                  title="Planned start"
-                  className="text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300" />
+                  title="Planned start" className={field} />
                 <input type="date" value={phase.planned_end?.slice(0, 10) || ''}
                   onChange={e => updatePhase(phase, { planned_end: e.target.value || undefined })}
-                  title="Planned end"
-                  className="text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300" />
+                  title="Planned end" className={field} />
                 <input type="number" min="0" max="100" value={phase.pct_complete}
                   onChange={e => updatePhase(phase, { pct_complete: parseInt(e.target.value) || 0 })}
-                  title="% complete"
-                  className="text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 w-16 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300" />
+                  title="% complete" className={`${field} w-16`} />
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400">$</span>
+                  <input type="number" value={phase.budget}
+                    onChange={e => updatePhase(phase, { budget: parseFloat(e.target.value) || 0 })}
+                    title="Phase budget" className={`${field} w-24 pl-4`} />
+                </div>
+                <span className="text-xs text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
+                  {formatUSD(phase.spent_so_far, true)} spent
+                </span>
                 <button onClick={async () => { await api.deletePhase(projectId, phase.id); onChange() }}
                   className="text-xs text-zinc-400 hover:text-red-500 ml-auto">Remove</button>
               </div>
@@ -437,25 +495,27 @@ function BurndownTab({ projectId }: { projectId: string }) {
 
 // ─── Transactions tab ───────────────────────────────────────────────────────
 
-function TransactionsTab({ projectId, accounts }: { projectId: string; accounts: { id: string; legal_business_name: string }[] }) {
+function TransactionsTab({
+  projectId, accounts, phases,
+}: { projectId: string; accounts: { id: string; legal_business_name: string }[]; phases: ProjectPhase[] }) {
   return (
     <div className="space-y-4">
       <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
         <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Mercury transactions</h2>
         </div>
-        <TransactionList projectId={projectId} limit={100} showAccount accounts={accounts} />
+        <TransactionList projectId={projectId} phases={phases} limit={100} showAccount accounts={accounts} />
       </div>
 
-      <ManualExpensesSection projectId={projectId} />
+      <ManualExpensesSection projectId={projectId} phases={phases} />
     </div>
   )
 }
 
-function ManualExpensesSection({ projectId }: { projectId: string }) {
+function ManualExpensesSection({ projectId, phases }: { projectId: string; phases: ProjectPhase[] }) {
   const [expenses, setExpenses] = useState<ManualExpense[]>([])
   const [adding, setAdding] = useState(false)
-  const [form, setForm] = useState({ date: format(new Date(), 'yyyy-MM-dd'), description: '', amount: '', category: '' })
+  const [form, setForm] = useState({ date: format(new Date(), 'yyyy-MM-dd'), description: '', amount: '', category: '', phase_id: '' })
 
   const load = () => { api.manualExpenses(projectId).then(setExpenses).catch(() => {}) }
   useEffect(load, [projectId])
@@ -464,12 +524,16 @@ function ManualExpensesSection({ projectId }: { projectId: string }) {
     const amount = parseFloat(form.amount)
     if (!form.description.trim() || isNaN(amount)) return
     await api.createManualExpense(projectId, {
-      date: form.date, description: form.description, amount, category: form.category || undefined,
+      date: form.date, description: form.description, amount,
+      category: form.category || undefined,
+      phase_id: form.phase_id ? parseInt(form.phase_id) : undefined,
     })
-    setForm({ date: format(new Date(), 'yyyy-MM-dd'), description: '', amount: '', category: '' })
+    setForm({ date: format(new Date(), 'yyyy-MM-dd'), description: '', amount: '', category: '', phase_id: '' })
     setAdding(false)
     load()
   }
+
+  const phaseName = (id?: number | null) => phases.find(p => p.id === id)?.name
 
   const field = 'px-2.5 py-1.5 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-violet-500'
 
@@ -496,6 +560,12 @@ function ManualExpensesSection({ projectId }: { projectId: string }) {
             onChange={e => setForm({ ...form, amount: e.target.value })} />
           <input className={`${field} w-32`} placeholder="Category" value={form.category}
             onChange={e => setForm({ ...form, category: e.target.value })} />
+          {phases.length > 0 && (
+            <select className={field} value={form.phase_id} onChange={e => setForm({ ...form, phase_id: e.target.value })}>
+              <option value="">No phase</option>
+              {phases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
           <button onClick={submit}
             className="px-3 py-1.5 text-xs rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-medium transition-colors">
             Save
@@ -516,6 +586,11 @@ function ManualExpensesSection({ projectId }: { projectId: string }) {
               {e.category && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
                   {e.category}
+                </span>
+              )}
+              {phaseName(e.phase_id) && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300">
+                  {phaseName(e.phase_id)}
                 </span>
               )}
               <span className={`tabular-nums font-medium ${e.amount > 0 ? 'text-emerald-600' : 'text-zinc-900 dark:text-zinc-50'}`}>

@@ -26,10 +26,14 @@ def _migrate():
         "CREATE TABLE IF NOT EXISTS account_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id TEXT NOT NULL UNIQUE REFERENCES accounts(id), threshold REAL NOT NULL, email TEXT NOT NULL, last_sent_at DATETIME)",
         "ALTER TABLE transactions ADD COLUMN project_id TEXT REFERENCES projects(id)",
         "CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name TEXT NOT NULL, project_type TEXT NOT NULL, status TEXT DEFAULT 'active', location TEXT, acreage REAL, start_date DATETIME, end_date_estimated DATETIME, end_date_actual DATETIME, budget_total REAL DEFAULT 0, revenue_estimate REAL DEFAULT 0, notes TEXT, created_at DATETIME)",
-        "CREATE TABLE IF NOT EXISTS phase_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, sort_order INTEGER DEFAULT 0, color TEXT)",
-        "CREATE TABLE IF NOT EXISTS project_phases (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL REFERENCES projects(id), name TEXT NOT NULL, sort_order INTEGER DEFAULT 0, color TEXT, planned_start DATETIME, planned_end DATETIME, actual_start DATETIME, actual_end DATETIME, status TEXT DEFAULT 'not_started', pct_complete INTEGER DEFAULT 0)",
+        "CREATE TABLE IF NOT EXISTS phase_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, sort_order INTEGER DEFAULT 0, color TEXT, budget REAL DEFAULT 0)",
+        "CREATE TABLE IF NOT EXISTS project_phases (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL REFERENCES projects(id), name TEXT NOT NULL, sort_order INTEGER DEFAULT 0, color TEXT, budget REAL DEFAULT 0, planned_start DATETIME, planned_end DATETIME, actual_start DATETIME, actual_end DATETIME, status TEXT DEFAULT 'not_started', pct_complete INTEGER DEFAULT 0)",
         "CREATE TABLE IF NOT EXISTS project_budget_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL UNIQUE REFERENCES projects(id), threshold_pct REAL NOT NULL, email TEXT NOT NULL, last_sent_at DATETIME)",
-        "CREATE TABLE IF NOT EXISTS project_manual_expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL REFERENCES projects(id), date DATETIME NOT NULL, description TEXT NOT NULL, amount REAL NOT NULL, category TEXT, created_at DATETIME)",
+        "CREATE TABLE IF NOT EXISTS project_manual_expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL REFERENCES projects(id), date DATETIME NOT NULL, description TEXT NOT NULL, amount REAL NOT NULL, category TEXT, phase_id INTEGER REFERENCES project_phases(id), created_at DATETIME)",
+        "ALTER TABLE phase_templates ADD COLUMN budget REAL DEFAULT 0",
+        "ALTER TABLE project_phases ADD COLUMN budget REAL DEFAULT 0",
+        "ALTER TABLE transactions ADD COLUMN phase_id INTEGER REFERENCES project_phases(id)",
+        "ALTER TABLE project_manual_expenses ADD COLUMN phase_id INTEGER REFERENCES project_phases(id)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

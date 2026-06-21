@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import Transaction, Category
+from app.models import Transaction, Category, ProjectPhase
 from app.schemas import TransactionList, TransactionOut
 
 router = APIRouter()
@@ -96,6 +96,40 @@ def set_project(
         check_project_alerts(db, affected)
 
     return {"id": txn.id, "project_id": txn.project_id}
+
+
+class PhasePatch(BaseModel):
+    phase_id: int | None = None
+
+
+@router.patch("/{txn_id}/phase")
+def set_phase(
+    txn_id: str,
+    body: PhasePatch,
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_user),
+):
+    """Tag (or untag) a transaction to a project phase. Auto-links the parent project too."""
+    txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
+    if not txn:
+        raise HTTPException(404, "Transaction not found")
+
+    if body.phase_id:
+        phase = db.query(ProjectPhase).filter(ProjectPhase.id == body.phase_id).first()
+        if not phase:
+            raise HTTPException(404, "Phase not found")
+        txn.phase_id = phase.id
+        txn.project_id = phase.project_id  # keep project tag consistent with the phase
+    else:
+        txn.phase_id = None
+
+    db.commit()
+
+    from app.sync import check_project_alerts
+    if txn.project_id:
+        check_project_alerts(db, [txn.project_id])
+
+    return {"id": txn.id, "phase_id": txn.phase_id, "project_id": txn.project_id}
 
 
 @router.get("/summary")

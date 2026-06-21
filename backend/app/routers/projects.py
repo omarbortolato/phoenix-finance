@@ -49,9 +49,19 @@ class ProjectUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class PhaseCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
+    budget: float = 0.0
+    planned_start: Optional[datetime] = None
+    planned_end: Optional[datetime] = None
+    status: str = "not_started"
+
+
 class PhaseUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
+    budget: Optional[float] = None
     planned_start: Optional[datetime] = None
     planned_end: Optional[datetime] = None
     actual_start: Optional[datetime] = None
@@ -70,6 +80,7 @@ class ManualExpenseCreate(BaseModel):
     description: str
     amount: float
     category: Optional[str] = None
+    phase_id: Optional[int] = None
 
 
 class ManualExpenseUpdate(BaseModel):
@@ -77,11 +88,13 @@ class ManualExpenseUpdate(BaseModel):
     description: Optional[str] = None
     amount: Optional[float] = None
     category: Optional[str] = None
+    phase_id: Optional[int] = None
 
 
 class PhaseTemplateCreate(BaseModel):
     name: str
     color: Optional[str] = None
+    budget: float = 0.0
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -279,14 +292,75 @@ def project_category_breakdown(project_id: str, db: Session = Depends(get_db), _
 
 # ─── Phases ─────────────────────────────────────────────────────────────────
 
+def _phase_to_dict(phase: ProjectPhase, spent_by_phase: dict) -> dict:
+    spent = spent_by_phase.get(phase.id, 0.0)
+    budget = phase.budget or 0.0
+    return {
+        "id": phase.id,
+        "project_id": phase.project_id,
+        "name": phase.name,
+        "sort_order": phase.sort_order,
+        "color": phase.color,
+        "budget": budget,
+        "planned_start": phase.planned_start,
+        "planned_end": phase.planned_end,
+        "actual_start": phase.actual_start,
+        "actual_end": phase.actual_end,
+        "status": phase.status,
+        "pct_complete": phase.pct_complete,
+        "spent_so_far": round(spent, 2),
+        "budget_remaining": round(budget - spent, 2),
+    }
+
+
 @router.get("/{project_id}/phases")
 def list_phases(project_id: str, db: Session = Depends(get_db), _: str = Depends(get_current_user)):
-    return (
+    phases = (
         db.query(ProjectPhase)
         .filter(ProjectPhase.project_id == project_id)
         .order_by(ProjectPhase.sort_order)
         .all()
     )
+    txns = _project_transactions(db, project_id)
+    expenses = db.query(ProjectManualExpense).filter(ProjectManualExpense.project_id == project_id).all()
+
+    spent_by_phase: dict = {}
+    for t in txns:
+        if t.phase_id and t.amount < 0:
+            spent_by_phase[t.phase_id] = spent_by_phase.get(t.phase_id, 0.0) + (-t.amount)
+    for e in expenses:
+        if e.phase_id and e.amount < 0:
+            spent_by_phase[e.phase_id] = spent_by_phase.get(e.phase_id, 0.0) + (-e.amount)
+
+    return [_phase_to_dict(p, spent_by_phase) for p in phases]
+
+
+@router.post("/{project_id}/phases", status_code=201)
+def create_phase(
+    project_id: str, body: PhaseCreate,
+    db: Session = Depends(get_db), _: str = Depends(get_current_user),
+):
+    """Add a phase directly to this project — no template required."""
+    _get_or_404(db, project_id)
+    max_order = (
+        db.query(func.max(ProjectPhase.sort_order))
+        .filter(ProjectPhase.project_id == project_id)
+        .scalar() or 0
+    )
+    phase = ProjectPhase(
+        project_id=project_id,
+        name=body.name,
+        color=body.color,
+        budget=body.budget,
+        planned_start=body.planned_start,
+        planned_end=body.planned_end,
+        status=body.status,
+        sort_order=max_order + 1,
+    )
+    db.add(phase)
+    db.commit()
+    db.refresh(phase)
+    return _phase_to_dict(phase, {})
 
 
 @router.post("/{project_id}/phases/sync-from-templates")
@@ -300,7 +374,9 @@ def sync_phases_from_templates(project_id: str, db: Session = Depends(get_db), _
     for t in templates:
         if t.name in existing_names:
             continue
-        db.add(ProjectPhase(project_id=project_id, name=t.name, sort_order=t.sort_order, color=t.color))
+        db.add(ProjectPhase(
+            project_id=project_id, name=t.name, sort_order=t.sort_order, color=t.color, budget=t.budget or 0.0,
+        ))
         created += 1
     db.commit()
     return {"created": created}
@@ -335,7 +411,14 @@ def update_phase(
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(phase, k, v)
     db.commit()
-    return phase
+    db.refresh(phase)
+
+    txns = _project_transactions(db, project_id)
+    expenses = db.query(ProjectManualExpense).filter(ProjectManualExpense.project_id == project_id).all()
+    spent = sum(-t.amount for t in txns if t.phase_id == phase_id and t.amount < 0)
+    spent += sum(-e.amount for e in expenses if e.phase_id == phase_id and e.amount < 0)
+
+    return _phase_to_dict(phase, {phase_id: spent})
 
 
 @router.delete("/{project_id}/phases/{phase_id}", status_code=204)
@@ -444,7 +527,7 @@ def list_phase_templates(db: Session = Depends(get_db), _: str = Depends(get_cur
 @template_router.post("", status_code=201)
 def create_phase_template(body: PhaseTemplateCreate, db: Session = Depends(get_db), _: str = Depends(get_current_user)):
     max_order = db.query(func.max(PhaseTemplate.sort_order)).scalar() or 0
-    template = PhaseTemplate(name=body.name, color=body.color, sort_order=max_order + 1)
+    template = PhaseTemplate(name=body.name, color=body.color, budget=body.budget, sort_order=max_order + 1)
     db.add(template)
     db.commit()
     db.refresh(template)
@@ -471,6 +554,7 @@ def update_phase_template(
         raise HTTPException(404, "Template not found")
     t.name = body.name
     t.color = body.color
+    t.budget = body.budget
     db.commit()
     return t
 

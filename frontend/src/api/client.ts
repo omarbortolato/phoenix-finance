@@ -62,6 +62,7 @@ export interface Transaction {
   mercury_category?: string
   dashboard_link?: string
   project_id?: string | null
+  phase_id?: number | null
 }
 
 export interface TransactionList {
@@ -131,12 +132,15 @@ export interface ProjectPhase {
   name: string
   sort_order: number
   color?: string | null
+  budget: number
   planned_start?: string | null
   planned_end?: string | null
   actual_start?: string | null
   actual_end?: string | null
   status: 'not_started' | 'in_progress' | 'completed' | 'blocked'
   pct_complete: number
+  spent_so_far: number
+  budget_remaining: number
 }
 
 export interface PhaseTemplate {
@@ -144,6 +148,16 @@ export interface PhaseTemplate {
   name: string
   sort_order: number
   color?: string | null
+  budget: number
+}
+
+export interface PhaseCreateInput {
+  name: string
+  color?: string
+  budget?: number
+  planned_start?: string
+  planned_end?: string
+  status?: string
 }
 
 export interface ProjectAlert {
@@ -159,6 +173,7 @@ export interface ManualExpense {
   description: string
   amount: number
   category?: string | null
+  phase_id?: number | null
 }
 
 export interface BurndownPoint {
@@ -248,6 +263,8 @@ export const api = {
 
   // Project phases
   projectPhases: (id: string) => req<ProjectPhase[]>(`/projects/${id}/phases`),
+  createPhase: (projectId: string, body: PhaseCreateInput) =>
+    req<ProjectPhase>(`/projects/${projectId}/phases`, { method: 'POST', body: JSON.stringify(body) }),
   syncPhasesFromTemplates: (id: string) =>
     req<{ created: number }>(`/projects/${id}/phases/sync-from-templates`, { method: 'POST' }),
   updatePhase: (projectId: string, phaseId: number, body: Partial<ProjectPhase>) =>
@@ -257,12 +274,18 @@ export const api = {
   deletePhase: (projectId: string, phaseId: number) =>
     req(`/projects/${projectId}/phases/${phaseId}`, { method: 'DELETE' }),
 
+  setTransactionPhase: (txnId: string, phaseId: number | null) =>
+    req<{ id: string; phase_id: number | null; project_id: string | null }>(
+      `/transactions/${txnId}/phase`,
+      { method: 'PATCH', body: JSON.stringify({ phase_id: phaseId }) },
+    ),
+
   // Global phase templates (configurable in Settings)
   phaseTemplates: () => req<PhaseTemplate[]>('/phase-templates'),
-  createPhaseTemplate: (name: string, color?: string) =>
-    req<PhaseTemplate>('/phase-templates', { method: 'POST', body: JSON.stringify({ name, color }) }),
-  updatePhaseTemplate: (id: number, name: string, color?: string) =>
-    req<PhaseTemplate>(`/phase-templates/${id}`, { method: 'PATCH', body: JSON.stringify({ name, color }) }),
+  createPhaseTemplate: (name: string, color?: string, budget = 0) =>
+    req<PhaseTemplate>('/phase-templates', { method: 'POST', body: JSON.stringify({ name, color, budget }) }),
+  updatePhaseTemplate: (id: number, name: string, color?: string, budget = 0) =>
+    req<PhaseTemplate>(`/phase-templates/${id}`, { method: 'PATCH', body: JSON.stringify({ name, color, budget }) }),
   deletePhaseTemplate: (id: number) => req(`/phase-templates/${id}`, { method: 'DELETE' }),
   reorderPhaseTemplates: (items: { id: number; sort_order: number }[]) =>
     req('/phase-templates/reorder', { method: 'PATCH', body: JSON.stringify(items) }),
@@ -275,9 +298,9 @@ export const api = {
 
   // Manual expenses
   manualExpenses: (projectId: string) => req<ManualExpense[]>(`/projects/${projectId}/manual-expenses`),
-  createManualExpense: (projectId: string, body: { date: string; description: string; amount: number; category?: string }) =>
+  createManualExpense: (projectId: string, body: { date: string; description: string; amount: number; category?: string; phase_id?: number }) =>
     req<ManualExpense>(`/projects/${projectId}/manual-expenses`, { method: 'POST', body: JSON.stringify(body) }),
-  updateManualExpense: (expenseId: number, body: Partial<{ date: string; description: string; amount: number; category: string }>) =>
+  updateManualExpense: (expenseId: number, body: Partial<{ date: string; description: string; amount: number; category: string; phase_id: number | null }>) =>
     req<ManualExpense>(`/projects/manual-expenses/${expenseId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteManualExpense: (expenseId: number) =>
     req(`/projects/manual-expenses/${expenseId}`, { method: 'DELETE' }),

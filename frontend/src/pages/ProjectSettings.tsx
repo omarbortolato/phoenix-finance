@@ -10,6 +10,7 @@ export default function ProjectSettings() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [templates, setTemplates] = useState<PhaseTemplate[]>([])
   const [newName, setNewName] = useState('')
+  const [newBudget, setNewBudget] = useState('')
   const [loading, setLoading] = useState(true)
 
   const load = () => {
@@ -30,14 +31,20 @@ export default function ProjectSettings() {
     const name = newName.trim()
     if (!name) return
     const color = COLORS[templates.length % COLORS.length]
-    await api.createPhaseTemplate(name, color)
+    await api.createPhaseTemplate(name, color, parseFloat(newBudget) || 0)
     setNewName('')
+    setNewBudget('')
     load()
   }
 
   const renameTemplate = async (t: PhaseTemplate, name: string) => {
-    await api.updatePhaseTemplate(t.id, name, t.color || undefined)
+    await api.updatePhaseTemplate(t.id, name, t.color || undefined, t.budget)
     setTemplates(prev => prev.map(x => x.id === t.id ? { ...x, name } : x))
+  }
+
+  const rebudgetTemplate = async (t: PhaseTemplate, budget: number) => {
+    await api.updatePhaseTemplate(t.id, t.name, t.color || undefined, budget)
+    setTemplates(prev => prev.map(x => x.id === t.id ? { ...x, budget } : x))
   }
 
   const move = async (idx: number, dir: 'up' | 'down') => {
@@ -92,6 +99,19 @@ export default function ProjectSettings() {
                     onBlur={e => e.target.value.trim() && e.target.value !== t.name && renameTemplate(t, e.target.value.trim())}
                     className="flex-1 text-sm bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-500 rounded px-1 text-zinc-800 dark:text-zinc-200"
                   />
+                  <div className="relative flex-shrink-0">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400">$</span>
+                    <input
+                      type="number"
+                      defaultValue={t.budget || ''}
+                      placeholder="0"
+                      onBlur={e => rebudgetTemplate(t, parseFloat(e.target.value) || 0)}
+                      title="Default budget for this phase"
+                      className="w-24 pl-4 pr-1 py-1 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg
+                        bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300
+                        focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    />
+                  </div>
                   <button onClick={() => move(idx, 'up')} disabled={idx === 0}
                     className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 disabled:opacity-20">
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,6 +141,16 @@ export default function ProjectSettings() {
               onKeyDown={e => { if (e.key === 'Enter') addTemplate() }}
               placeholder="e.g. Due Diligence"
               className="flex-1 text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5
+                bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200
+                focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+            <input
+              type="number"
+              value={newBudget}
+              onChange={e => setNewBudget(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addTemplate() }}
+              placeholder="Budget $"
+              className="w-28 text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5
                 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200
                 focus:outline-none focus:ring-2 focus:ring-violet-500"
             />

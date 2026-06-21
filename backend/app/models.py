@@ -45,6 +45,7 @@ class Transaction(Base):
     dashboard_link = Column(String)
     raw_json = Column(Text)
     project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    phase_id = Column(Integer, ForeignKey("project_phases.id"), nullable=True, index=True)
 
     account = relationship("Account", back_populates="transactions")
     project = relationship("Project", back_populates="transactions")
@@ -103,6 +104,7 @@ class PhaseTemplate(Base):
     name = Column(String, nullable=False)
     sort_order = Column(Integer, default=0)
     color = Column(String)
+    budget = Column(Float, default=0.0)
 
 
 class ProjectPhase(Base):
@@ -114,6 +116,7 @@ class ProjectPhase(Base):
     name = Column(String, nullable=False)
     sort_order = Column(Integer, default=0)
     color = Column(String)
+    budget = Column(Float, default=0.0)
     planned_start = Column(DateTime(timezone=True))
     planned_end = Column(DateTime(timezone=True))
     actual_start = Column(DateTime(timezone=True))
@@ -147,6 +150,7 @@ class ProjectManualExpense(Base):
     description = Column(String, nullable=False)
     amount = Column(Float, nullable=False)  # negative = cost, positive = income
     category = Column(String)
+    phase_id = Column(Integer, ForeignKey("project_phases.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("Project", back_populates="manual_expenses")
