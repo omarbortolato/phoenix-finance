@@ -44,11 +44,11 @@ export default function Cockpit() {
     api.accounts().then(setAccounts).catch(console.error)
   }, [])
 
-  const doSync = async () => {
+  const doSync = async (full = false) => {
     setSyncing(true)
     setSyncMsg('')
     try {
-      const r = await api.sync()
+      const r = await api.sync(full)
       setSyncMsg(`Sync complete: ${r.total_transactions_new} new transactions`)
       api.totals().then(setTotals)
       api.accounts().then(setAccounts)
@@ -82,7 +82,7 @@ export default function Cockpit() {
             {syncMsg && (
               <span className="text-xs text-zinc-500 dark:text-zinc-400">{syncMsg}</span>
             )}
-            <button onClick={doSync} disabled={syncing}
+            <button onClick={() => doSync(false)} disabled={syncing}
               className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700
                 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800
                 disabled:opacity-50 transition-colors">
@@ -91,6 +91,13 @@ export default function Cockpit() {
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
               {syncing ? 'Syncing…' : 'Sync'}
+            </button>
+            <button onClick={() => doSync(true)} disabled={syncing}
+              title="Re-fetch each account's entire transaction history from Mercury"
+              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700
+                text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800
+                disabled:opacity-50 transition-colors">
+              Full resync
             </button>
           </div>
         </div>

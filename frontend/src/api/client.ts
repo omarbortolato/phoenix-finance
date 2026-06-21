@@ -226,7 +226,7 @@ export const api = {
   deleteAlert: (accountId: string) =>
     req(`/accounts/${accountId}/alert`, { method: 'DELETE' }),
 
-  sync: () => req<SyncResult>('/sync', { method: 'POST' }),
+  sync: (full = false) => req<SyncResult>(`/sync${full ? '?full=true' : ''}`, { method: 'POST' }),
 
   // Projects
   projects: () => req<Project[]>('/projects'),
