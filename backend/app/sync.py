@@ -24,7 +24,7 @@ def _is_excluded(acc_data: dict, excluded_names: list[str]) -> bool:
     return any(ex in legal or ex in name for ex in excluded_names)
 
 
-async def sync_all(db: Session) -> dict:
+async def sync_all(db: Session, full: bool = False) -> dict:
     tokens = settings.get_mercury_tokens()
     excluded = settings.get_excluded_names()
 
@@ -77,9 +77,10 @@ async def sync_all(db: Session) -> dict:
             account.mercury_created_at = _parse_dt(acc_data.get("createdAt"))
             db.flush()
 
-            # Incremental sync: overlap by 2 days to catch late-posted transactions
+            # Incremental sync: overlap by 2 days to catch late-posted transactions.
+            # full=True ignores the cursor and re-fetches each account's entire history.
             start_date: str | None = None
-            if account.last_sync_at:
+            if account.last_sync_at and not full:
                 start_dt = account.last_sync_at - timedelta(days=2)
                 start_date = start_dt.strftime("%Y-%m-%d")
 
