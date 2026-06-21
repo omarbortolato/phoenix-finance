@@ -78,11 +78,19 @@ async def sync_all(db: Session, full: bool = False) -> dict:
             db.flush()
 
             # Incremental sync: overlap by 2 days to catch late-posted transactions.
-            # full=True ignores the cursor and re-fetches each account's entire history.
-            start_date: str | None = None
+            # full=True (or a brand-new account) re-fetches the entire history.
+            # NOTE: Mercury's API appears to default to a recent window when `start`
+            # is omitted entirely — always pass an explicit start date, never None.
+            EARLY_DEFAULT = "2020-01-01"
+            account_open_date = (
+                account.mercury_created_at.strftime("%Y-%m-%d")
+                if account.mercury_created_at else EARLY_DEFAULT
+            )
             if account.last_sync_at and not full:
                 start_dt = account.last_sync_at - timedelta(days=2)
                 start_date = start_dt.strftime("%Y-%m-%d")
+            else:
+                start_date = account_open_date
 
             fetched = 0
             new_count = 0
