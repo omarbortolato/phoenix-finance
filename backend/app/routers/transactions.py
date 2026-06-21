@@ -21,6 +21,7 @@ def list_transactions(
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
     category: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None, description="Substring match on counterparty or description"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -37,6 +38,8 @@ def list_transactions(
         q = q.filter(Transaction.created_at <= end)
     if category:
         q = q.filter(Transaction.mercury_category == category)
+    if project_id:
+        q = q.filter(Transaction.project_id == project_id)
     if search:
         term = f"%{search}%"
         q = q.filter(
@@ -66,6 +69,33 @@ def set_category(
     txn.mercury_category = body.category or None
     db.commit()
     return {"id": txn.id, "mercury_category": txn.mercury_category}
+
+
+class ProjectPatch(BaseModel):
+    project_id: str | None = None
+
+
+@router.patch("/{txn_id}/project")
+def set_project(
+    txn_id: str,
+    body: ProjectPatch,
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_user),
+):
+    """Tag (or untag) a transaction to a project deal."""
+    txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
+    if not txn:
+        raise HTTPException(404, "Transaction not found")
+    old_project_id = txn.project_id
+    txn.project_id = body.project_id or None
+    db.commit()
+
+    from app.sync import check_project_alerts
+    affected = [pid for pid in {old_project_id, txn.project_id} if pid]
+    if affected:
+        check_project_alerts(db, affected)
+
+    return {"id": txn.id, "project_id": txn.project_id}
 
 
 @router.get("/summary")

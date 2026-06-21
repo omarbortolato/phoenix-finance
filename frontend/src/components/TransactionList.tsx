@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, Transaction, TransactionList as TList, formatCategory, getCategoryColor, formatUSD } from '../api/client'
+import { api, Project, Transaction, TransactionList as TList, formatCategory, getCategoryColor, formatUSD } from '../api/client'
 import { format, parseISO } from 'date-fns'
 
 interface Props {
   accountId?: string
+  projectId?: string
   start?: string
   end?: string
   category?: string
@@ -142,35 +143,110 @@ function CategoryCell({
   return <CategoryPill cat={current} onClick={() => setEditing(true)} />
 }
 
-export default function TransactionList({ accountId, start, end, category, search, limit = 50, showAccount = false, accounts = [] }: Props) {
+function ProjectPill({ label, onClick }: { label: string; onClick?: () => void }) {
+  return (
+    <span
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full
+        bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400
+        ${onClick ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+    >
+      {label}
+      {onClick && <svg className="w-2.5 h-2.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>}
+    </span>
+  )
+}
+
+function ProjectCell({
+  txnId, current, projects, onSaved,
+}: {
+  txnId: string
+  current?: string | null
+  projects: Project[]
+  onSaved: (newProjectId: string | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const selectRef = useRef<HTMLSelectElement>(null)
+
+  useEffect(() => {
+    if (editing) selectRef.current?.focus()
+  }, [editing])
+
+  const save = async (val: string | null) => {
+    setSaving(true)
+    try {
+      await api.setTransactionProject(txnId, val)
+      onSaved(val)
+    } finally {
+      setSaving(false)
+      setEditing(false)
+    }
+  }
+
+  if (saving) {
+    return <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+  }
+
+  if (editing) {
+    return (
+      <select
+        ref={selectRef}
+        defaultValue={current || ''}
+        onChange={e => save(e.target.value || null)}
+        onBlur={() => setEditing(false)}
+        className="text-xs border border-violet-400 rounded-lg px-2 py-1
+          bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300
+          focus:outline-none focus:ring-1 focus:ring-violet-500"
+      >
+        <option value="">No project</option>
+        {projects.map(p => (
+          <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+        ))}
+      </select>
+    )
+  }
+
+  const project = projects.find(p => p.id === current)
+  return <ProjectPill label={project ? project.code : 'No project'} onClick={() => setEditing(true)} />
+}
+
+export default function TransactionList({ accountId, projectId, start, end, category, search, limit = 50, showAccount = false, accounts = [] }: Props) {
   const [data, setData] = useState<TList | null>(null)
   const [loading, setLoading] = useState(true)
   const [offset, setOffset] = useState(0)
   const [categories, setCategories] = useState<string[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
   const [localCats, setLocalCats] = useState<Record<string, string | null>>({})
+  const [localProjects, setLocalProjects] = useState<Record<string, string | null>>({})
 
   const accountMap = Object.fromEntries(accounts.map(a => [a.id, a.legal_business_name]))
 
   useEffect(() => {
     api.categories().then(setCategories).catch(() => {})
+    api.projects().then(setProjects).catch(() => {})
   }, [])
 
   useEffect(() => {
     setOffset(0)
-  }, [accountId, start, end, category, search])
+  }, [accountId, projectId, start, end, category, search])
 
   useEffect(() => {
     setLoading(true)
-    api.transactions({ account_id: accountId, start, end, category, search, limit, offset })
+    api.transactions({ account_id: accountId, project_id: projectId, start, end, category, search, limit, offset })
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false))
-  }, [accountId, start, end, category, search, limit, offset])
+  }, [accountId, projectId, start, end, category, search, limit, offset])
 
   const handleCategorySaved = (txnId: string, newCat: string | null) => {
     setLocalCats(prev => ({ ...prev, [txnId]: newCat }))
     // Also refresh categories list in case user added a new one
     api.categories().then(setCategories).catch(() => {})
+  }
+
+  const handleProjectSaved = (txnId: string, newProjectId: string | null) => {
+    setLocalProjects(prev => ({ ...prev, [txnId]: newProjectId }))
   }
 
   if (loading && !data) return (
@@ -193,6 +269,9 @@ export default function TransactionList({ accountId, start, end, category, searc
   const getCategory = (t: Transaction): string | undefined =>
     localCats.hasOwnProperty(t.id) ? (localCats[t.id] ?? undefined) : (t.mercury_category ?? undefined)
 
+  const getProjectId = (t: Transaction): string | null | undefined =>
+    localProjects.hasOwnProperty(t.id) ? localProjects[t.id] : t.project_id
+
   return (
     <div>
       {/* Desktop table */}
@@ -204,6 +283,7 @@ export default function TransactionList({ accountId, start, end, category, searc
               <th className="text-left py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Description</th>
               {showAccount && <th className="text-left py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Account</th>}
               <th className="text-left py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Category</th>
+              <th className="text-left py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Project</th>
               <th className="text-right py-2.5 px-3 text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Amount</th>
             </tr>
           </thead>
@@ -230,6 +310,14 @@ export default function TransactionList({ accountId, start, end, category, searc
                     onSaved={newCat => handleCategorySaved(t.id, newCat)}
                   />
                 </td>
+                <td className="py-3 px-3">
+                  <ProjectCell
+                    txnId={t.id}
+                    current={getProjectId(t)}
+                    projects={projects}
+                    onSaved={newProjectId => handleProjectSaved(t.id, newProjectId)}
+                  />
+                </td>
                 <td className="py-3 px-3 text-right whitespace-nowrap">
                   <AmountCell amount={t.amount} />
                 </td>
@@ -254,6 +342,12 @@ export default function TransactionList({ accountId, start, end, category, searc
                   current={getCategory(t)}
                   categories={categories}
                   onSaved={newCat => handleCategorySaved(t.id, newCat)}
+                />
+                <ProjectCell
+                  txnId={t.id}
+                  current={getProjectId(t)}
+                  projects={projects}
+                  onSaved={newProjectId => handleProjectSaved(t.id, newProjectId)}
                 />
               </div>
             </div>

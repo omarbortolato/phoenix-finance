@@ -61,6 +61,7 @@ export interface Transaction {
   note?: string
   mercury_category?: string
   dashboard_link?: string
+  project_id?: string | null
 }
 
 export interface TransactionList {
@@ -92,6 +93,94 @@ export interface AccountAlert {
   last_sent_at?: string | null
 }
 
+// ─── Projects ──────────────────────────────────────────────────────────────
+
+export type ProjectType = 'entitlement' | 'minor_subdivision'
+export type ProjectStatus = 'active' | 'on_hold' | 'completed' | 'cancelled'
+export type StatusColor = 'green' | 'yellow' | 'red' | 'gray'
+
+export interface Project {
+  id: string
+  code: string
+  name: string
+  project_type: ProjectType
+  status: ProjectStatus
+  location?: string | null
+  acreage?: number | null
+  start_date?: string | null
+  end_date_estimated?: string | null
+  end_date_actual?: string | null
+  budget_total: number
+  revenue_estimate: number
+  notes?: string | null
+  // computed KPIs
+  spent_so_far: number
+  revenue_actual: number
+  revenue_remaining: number
+  budget_remaining: number
+  pct_budget_used: number | null
+  margin_estimate: number
+  roi_estimate_pct: number | null
+  estimated_irr_pct: number | null
+  status_color: StatusColor
+}
+
+export interface ProjectPhase {
+  id: number
+  project_id: string
+  name: string
+  sort_order: number
+  color?: string | null
+  planned_start?: string | null
+  planned_end?: string | null
+  actual_start?: string | null
+  actual_end?: string | null
+  status: 'not_started' | 'in_progress' | 'completed' | 'blocked'
+  pct_complete: number
+}
+
+export interface PhaseTemplate {
+  id: number
+  name: string
+  sort_order: number
+  color?: string | null
+}
+
+export interface ProjectAlert {
+  threshold_pct: number
+  email: string
+  last_sent_at?: string | null
+}
+
+export interface ManualExpense {
+  id: number
+  project_id: string
+  date: string
+  description: string
+  amount: number
+  category?: string | null
+}
+
+export interface BurndownPoint {
+  date: string
+  spent_actual: number
+  budget_ideal: number | null
+}
+
+export interface ProjectCreateInput {
+  code: string
+  name: string
+  project_type: ProjectType
+  status?: ProjectStatus
+  location?: string
+  acreage?: number
+  start_date?: string
+  end_date_estimated?: string
+  budget_total?: number
+  revenue_estimate?: number
+  notes?: string
+}
+
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -108,7 +197,7 @@ export const api = {
     req<BalancePoint[]>(`/accounts/balance-history${qs({ account_id: accountId, days })}`),
 
   transactions: (p: {
-    account_id?: string; start?: string; end?: string
+    account_id?: string; project_id?: string; start?: string; end?: string
     category?: string; search?: string; limit?: number; offset?: number
   }) => req<TransactionList>(`/transactions${qs(p)}`),
 
@@ -138,6 +227,60 @@ export const api = {
     req(`/accounts/${accountId}/alert`, { method: 'DELETE' }),
 
   sync: () => req<SyncResult>('/sync', { method: 'POST' }),
+
+  // Projects
+  projects: () => req<Project[]>('/projects'),
+  project: (id: string) => req<Project>(`/projects/${id}`),
+  createProject: (body: ProjectCreateInput) =>
+    req<Project>('/projects', { method: 'POST', body: JSON.stringify(body) }),
+  updateProject: (id: string, body: Partial<ProjectCreateInput>) =>
+    req<Project>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteProject: (id: string) => req(`/projects/${id}`, { method: 'DELETE' }),
+
+  projectBurndown: (id: string) => req<BurndownPoint[]>(`/projects/${id}/burndown`),
+  projectCategoryBreakdown: (id: string) => req<CategoryBreakdown[]>(`/projects/${id}/category-breakdown`),
+
+  setTransactionProject: (txnId: string, projectId: string | null) =>
+    req<{ id: string; project_id: string | null }>(
+      `/transactions/${txnId}/project`,
+      { method: 'PATCH', body: JSON.stringify({ project_id: projectId }) },
+    ),
+
+  // Project phases
+  projectPhases: (id: string) => req<ProjectPhase[]>(`/projects/${id}/phases`),
+  syncPhasesFromTemplates: (id: string) =>
+    req<{ created: number }>(`/projects/${id}/phases/sync-from-templates`, { method: 'POST' }),
+  updatePhase: (projectId: string, phaseId: number, body: Partial<ProjectPhase>) =>
+    req<ProjectPhase>(`/projects/${projectId}/phases/${phaseId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  reorderPhases: (projectId: string, items: { id: number; sort_order: number }[]) =>
+    req(`/projects/${projectId}/phases/reorder`, { method: 'PATCH', body: JSON.stringify(items) }),
+  deletePhase: (projectId: string, phaseId: number) =>
+    req(`/projects/${projectId}/phases/${phaseId}`, { method: 'DELETE' }),
+
+  // Global phase templates (configurable in Settings)
+  phaseTemplates: () => req<PhaseTemplate[]>('/phase-templates'),
+  createPhaseTemplate: (name: string, color?: string) =>
+    req<PhaseTemplate>('/phase-templates', { method: 'POST', body: JSON.stringify({ name, color }) }),
+  updatePhaseTemplate: (id: number, name: string, color?: string) =>
+    req<PhaseTemplate>(`/phase-templates/${id}`, { method: 'PATCH', body: JSON.stringify({ name, color }) }),
+  deletePhaseTemplate: (id: number) => req(`/phase-templates/${id}`, { method: 'DELETE' }),
+  reorderPhaseTemplates: (items: { id: number; sort_order: number }[]) =>
+    req('/phase-templates/reorder', { method: 'PATCH', body: JSON.stringify(items) }),
+
+  // Project budget alert
+  getProjectAlert: (id: string) => req<ProjectAlert | null>(`/projects/${id}/alert`),
+  saveProjectAlert: (id: string, thresholdPct: number, email: string) =>
+    req<ProjectAlert>(`/projects/${id}/alert`, { method: 'PUT', body: JSON.stringify({ threshold_pct: thresholdPct, email }) }),
+  deleteProjectAlert: (id: string) => req(`/projects/${id}/alert`, { method: 'DELETE' }),
+
+  // Manual expenses
+  manualExpenses: (projectId: string) => req<ManualExpense[]>(`/projects/${projectId}/manual-expenses`),
+  createManualExpense: (projectId: string, body: { date: string; description: string; amount: number; category?: string }) =>
+    req<ManualExpense>(`/projects/${projectId}/manual-expenses`, { method: 'POST', body: JSON.stringify(body) }),
+  updateManualExpense: (expenseId: number, body: Partial<{ date: string; description: string; amount: number; category: string }>) =>
+    req<ManualExpense>(`/projects/manual-expenses/${expenseId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteManualExpense: (expenseId: number) =>
+    req(`/projects/manual-expenses/${expenseId}`, { method: 'DELETE' }),
 }
 
 // ─── Helpers shared across components ─────────────────────────────────────────

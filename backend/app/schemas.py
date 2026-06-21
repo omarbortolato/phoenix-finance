@@ -34,6 +34,7 @@ class TransactionOut(BaseModel):
     note: Optional[str] = None
     mercury_category: Optional[str] = None
     dashboard_link: Optional[str] = None
+    project_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

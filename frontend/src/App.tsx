@@ -5,6 +5,9 @@ import Login from './pages/Login'
 import Cockpit from './pages/Cockpit'
 import AccountDetail from './pages/AccountDetail'
 import Categorize from './pages/Categorize'
+import Projects from './pages/Projects'
+import ProjectDetail from './pages/ProjectDetail'
+import ProjectSettings from './pages/ProjectSettings'
 
 function Guard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -23,6 +26,9 @@ function AppRoutes() {
       <Route path="/" element={<Guard><Cockpit /></Guard>} />
       <Route path="/accounts/:id" element={<Guard><AccountDetail /></Guard>} />
       <Route path="/categorize" element={<Guard><Categorize /></Guard>} />
+      <Route path="/projects" element={<Guard><Projects /></Guard>} />
+      <Route path="/projects/settings" element={<Guard><ProjectSettings /></Guard>} />
+      <Route path="/projects/:id" element={<Guard><ProjectDetail /></Guard>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

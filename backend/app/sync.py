@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 from dateutil.parser import parse as parse_iso
 
 from .config import settings
-from .models import Account, AccountAlert, Transaction, SyncLog
+from .models import Account, AccountAlert, Project, ProjectBudgetAlert, ProjectManualExpense, Transaction, SyncLog
 from .mercury_client import MercuryClient
+from .project_kpis import compute_project_kpis
 
 
 def _parse_dt(val: str | None) -> datetime | None:
@@ -142,6 +143,7 @@ async def sync_all(db: Session) -> dict:
     # Check balance-threshold alerts for all synced accounts
     if settings.smtp_host:
         _check_alerts(db, list(seen_account_ids))
+        check_project_alerts(db)  # full sweep — new transactions may have moved any project's spend
 
     return {
         "accounts_synced": accounts_synced,
@@ -183,3 +185,61 @@ def _check_alerts(db: Session, account_ids: list[str]) -> None:
             db.commit()
         except Exception:
             pass  # don't fail the sync if email fails
+
+
+def check_project_alerts(db: Session, project_ids: list[str] | None = None) -> None:
+    """Send a budget-threshold email when a project's spend pace crosses its configured %.
+
+    Called after every Mercury sync (full sweep, project_ids=None) and after any
+    transaction/manual-expense mutation that can move a specific project's spend.
+    """
+    if not settings.smtp_host:
+        return
+
+    from .email_client import send_email
+
+    now = datetime.now(timezone.utc)
+    cooldown = now - timedelta(hours=24)
+
+    q = db.query(ProjectBudgetAlert)
+    if project_ids is not None:
+        if not project_ids:
+            return
+        q = q.filter(ProjectBudgetAlert.project_id.in_(project_ids))
+    alerts = q.all()
+
+    EXCLUDED_STATUSES = {"failed", "returned", "cancelled"}
+
+    for alert in alerts:
+        project = db.get(Project, alert.project_id)
+        if not project:
+            continue
+        if alert.last_sent_at and alert.last_sent_at > cooldown:
+            continue  # already notified in the last 24h
+
+        txns = (
+            db.query(Transaction)
+            .filter(Transaction.project_id == project.id, Transaction.status.notin_(EXCLUDED_STATUSES))
+            .all()
+        )
+        expenses = db.query(ProjectManualExpense).filter(ProjectManualExpense.project_id == project.id).all()
+        kpis = compute_project_kpis(project, txns, expenses)
+        pct = kpis["pct_budget_used"]
+        if pct is None or pct < alert.threshold_pct:
+            continue
+
+        try:
+            send_email(
+                alert.email,
+                f"[Phoenix Finance] Budget threshold reached — {project.name}",
+                f"Project {project.code} — {project.name} has reached {pct:.0f}% of its budget "
+                f"(threshold: {alert.threshold_pct:.0f}%).\n\n"
+                f"Budget total: ${project.budget_total:,.2f}\n"
+                f"Spent so far: ${kpis['spent_so_far']:,.2f}\n"
+                f"Remaining: ${kpis['budget_remaining']:,.2f}\n\n"
+                "— Phoenix Finance"
+            )
+            alert.last_sent_at = now
+            db.commit()
+        except Exception:
+            pass  # don't fail the caller if email fails
