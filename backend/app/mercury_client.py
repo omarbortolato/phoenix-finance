@@ -43,7 +43,12 @@ class MercuryClient:
         account_id: str,
         start: Optional[str] = None,
     ) -> list[dict]:
-        """Fetch all transactions with automatic offset pagination."""
+        """
+        Fetch all transactions with automatic offset pagination.
+        Terminates when a page comes back shorter than `limit` — relying on a
+        `total` field from the API is unsafe (it may be absent or stale, which
+        previously caused pagination to stop after the very first page).
+        """
         all_txns: list[dict] = []
         offset = 0
         limit = 500  # Mercury's max per page
@@ -52,9 +57,8 @@ class MercuryClient:
             data = await self._get_transactions_page(account_id, limit, offset, start)
             batch = data.get("transactions", [])
             all_txns.extend(batch)
-            total = data.get("total", 0)
             offset += len(batch)
-            if not batch or offset >= total:
+            if len(batch) < limit:
                 break
 
         return all_txns
