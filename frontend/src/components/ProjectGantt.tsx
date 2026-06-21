@@ -19,42 +19,92 @@ const STATUS_BADGE: Record<string, string> = {
   blocked: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 }
 
+// Guards against corrupted/nonsensical dates (e.g. year 0001 from a date-input typing glitch)
+const MIN_REASONABLE_YEAR = 2000
+function safeDate(d: string | null | undefined): Date | null {
+  if (!d) return null
+  const parsed = parseISO(d)
+  if (isNaN(parsed.getTime()) || parsed.getFullYear() < MIN_REASONABLE_YEAR) return null
+  return parsed
+}
+
+interface Segment {
+  startPct: number
+  endPct: number
+  solid: boolean
+}
+
+function computeSegments(
+  phase: ProjectPhase,
+  pct: (d: Date | null) => number | null,
+  todayPct: number | null,
+): Segment[] {
+  const pStart = pct(safeDate(phase.planned_start))
+  const pEnd = pct(safeDate(phase.planned_end))
+  const aStart = pct(safeDate(phase.actual_start))
+  const aEnd = pct(safeDate(phase.actual_end))
+
+  if (phase.status === 'completed') {
+    const start = aStart ?? pStart
+    const end = aEnd ?? pEnd
+    if (start == null || end == null) return []
+    return [{ startPct: start, endPct: Math.max(end, start + 0.5), solid: true }]
+  }
+
+  if (phase.status === 'not_started') {
+    if (pStart == null || pEnd == null) return []
+    return [{ startPct: pStart, endPct: Math.max(pEnd, pStart + 0.5), solid: false }]
+  }
+
+  // in_progress or blocked: solid up to today, dashed estimate for the remainder
+  const start = aStart ?? pStart
+  if (start == null) return []
+  const end = aEnd ?? pEnd ?? start
+  if (todayPct == null || todayPct <= start) {
+    return [{ startPct: start, endPct: Math.max(end, start + 0.5), solid: false }]
+  }
+  if (todayPct >= end) {
+    return [{ startPct: start, endPct: Math.max(end, start + 0.5), solid: true }]
+  }
+  return [
+    { startPct: start, endPct: todayPct, solid: true },
+    { startPct: todayPct, endPct: end, solid: false },
+  ]
+}
+
 export default function ProjectGantt({ phases }: Props) {
   if (!phases.length) {
     return (
       <div className="text-center py-10 text-sm text-zinc-400 dark:text-zinc-500">
-        No phases yet — use "Sync phases from templates" to populate the default phase list.
+        No phases yet — use "+ Add phase" or "Sync phases from templates" above.
       </div>
     )
   }
 
   const dates = phases
-    .flatMap(p => [p.planned_start, p.planned_end, p.actual_start, p.actual_end])
-    .filter(Boolean) as string[]
+    .flatMap(p => [safeDate(p.planned_start), safeDate(p.planned_end), safeDate(p.actual_start), safeDate(p.actual_end)])
+    .filter((d): d is Date => d !== null)
 
   if (!dates.length) {
     return (
       <div className="text-center py-10 text-sm text-zinc-400 dark:text-zinc-500">
-        Set planned dates on each phase to see the Gantt timeline.
+        Set planned start/end dates on each phase below to see the Gantt timeline.
       </div>
     )
   }
 
-  const parsed = dates.map(d => parseISO(d))
-  const minDate = new Date(Math.min(...parsed.map(d => d.getTime())))
-  const maxDate = new Date(Math.max(...parsed.map(d => d.getTime())))
+  const minDate = new Date(Math.min(...dates.map(d => d.getTime())))
+  const maxDate = new Date(Math.max(...dates.map(d => d.getTime())))
   const totalDays = Math.max(differenceInDays(maxDate, minDate), 1)
 
-  const pct = (d: string | null | undefined) => {
+  const pct = (d: Date | null): number | null => {
     if (!d) return null
-    const days = differenceInDays(parseISO(d), minDate)
+    const days = differenceInDays(d, minDate)
     return Math.max(0, Math.min(100, (days / totalDays) * 100))
   }
 
   const today = new Date()
-  const todayPct = today >= minDate && today <= maxDate
-    ? (differenceInDays(today, minDate) / totalDays) * 100
-    : null
+  const todayPct = today >= minDate && today <= maxDate ? pct(today) : null
 
   return (
     <div className="space-y-3">
@@ -71,11 +121,8 @@ export default function ProjectGantt({ phases }: Props) {
           />
         )}
         {phases.map(phase => {
-          const plannedStartPct = pct(phase.planned_start)
-          const plannedEndPct = pct(phase.planned_end)
-          const actualStartPct = pct(phase.actual_start)
-          const actualEndPct = pct(phase.actual_end)
           const color = phase.color || '#7C3AED'
+          const segments = computeSegments(phase, pct, todayPct)
 
           return (
             <div key={phase.id} className="flex items-center gap-3">
@@ -86,25 +133,25 @@ export default function ProjectGantt({ phases }: Props) {
                 </span>
               </div>
               <div className="flex-1 relative h-6 bg-zinc-50 dark:bg-zinc-800/60 rounded">
-                {plannedStartPct !== null && plannedEndPct !== null && (
-                  <div
-                    className="absolute top-1 bottom-1 rounded"
-                    style={{
-                      left: `${plannedStartPct}%`,
-                      width: `${Math.max(plannedEndPct - plannedStartPct, 1)}%`,
-                      backgroundColor: `${color}30`,
-                    }}
-                  />
-                )}
-                {actualStartPct !== null && (
-                  <div
-                    className="absolute top-1.5 bottom-1.5 rounded"
-                    style={{
-                      left: `${actualStartPct}%`,
-                      width: `${Math.max((actualEndPct ?? actualStartPct) - actualStartPct, 1.5)}%`,
-                      backgroundColor: color,
-                    }}
-                  />
+                {segments.length === 0 ? (
+                  <span className="absolute inset-0 flex items-center px-2 text-[10px] text-zinc-400 dark:text-zinc-500">
+                    No dates set
+                  </span>
+                ) : (
+                  segments.map((seg, i) => (
+                    <div
+                      key={i}
+                      className="absolute top-1 bottom-1 rounded"
+                      style={{
+                        left: `${seg.startPct}%`,
+                        width: `${Math.max(seg.endPct - seg.startPct, 0.5)}%`,
+                        backgroundColor: seg.solid ? color : `${color}20`,
+                        backgroundImage: seg.solid
+                          ? undefined
+                          : `repeating-linear-gradient(45deg, ${color}50 0, ${color}50 3px, transparent 3px, transparent 7px)`,
+                      }}
+                    />
+                  ))
                 )}
               </div>
               <span className="w-10 flex-shrink-0 text-right text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">
@@ -115,7 +162,10 @@ export default function ProjectGantt({ phases }: Props) {
         })}
       </div>
       <div className="flex items-center gap-4 text-xs text-zinc-400 dark:text-zinc-500 px-1 pt-1">
-        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-violet-600/30" /> Planned</span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #7C3AED50 0, #7C3AED50 3px, transparent 3px, transparent 7px)', backgroundColor: '#7C3AED20' }} />
+          Estimated
+        </span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-violet-600" /> Actual</span>
         <span className="flex items-center gap-1.5"><span className="w-px h-3 bg-red-400" /> Today</span>
       </div>

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,17 @@ router = APIRouter()
 template_router = APIRouter()
 
 EXCLUDED_STATUSES = {"failed", "returned", "cancelled"}
+
+# Guards against the classic <input type="date"> typing glitch where an
+# incomplete year (e.g. "1") gets committed as-is, producing dates like
+# year 0001 that silently break every date-range calculation downstream.
+MIN_REASONABLE_YEAR = 2000
+
+
+def _reject_unreasonable_date(v):
+    if v and v.year < MIN_REASONABLE_YEAR:
+        raise ValueError(f"Date year must be {MIN_REASONABLE_YEAR} or later")
+    return v
 
 
 # ─── Schemas ────────────────────────────────────────────────────────────────
@@ -33,6 +44,8 @@ class ProjectCreate(BaseModel):
     revenue_estimate: float = 0.0
     notes: Optional[str] = None
 
+    _check_dates = field_validator("start_date", "end_date_estimated", mode="after")(_reject_unreasonable_date)
+
 
 class ProjectUpdate(BaseModel):
     code: Optional[str] = None
@@ -48,6 +61,10 @@ class ProjectUpdate(BaseModel):
     revenue_estimate: Optional[float] = None
     notes: Optional[str] = None
 
+    _check_dates = field_validator(
+        "start_date", "end_date_estimated", "end_date_actual", mode="after"
+    )(_reject_unreasonable_date)
+
 
 class PhaseCreate(BaseModel):
     name: str
@@ -56,6 +73,8 @@ class PhaseCreate(BaseModel):
     planned_start: Optional[datetime] = None
     planned_end: Optional[datetime] = None
     status: str = "not_started"
+
+    _check_dates = field_validator("planned_start", "planned_end", mode="after")(_reject_unreasonable_date)
 
 
 class PhaseUpdate(BaseModel):
@@ -68,6 +87,15 @@ class PhaseUpdate(BaseModel):
     actual_end: Optional[datetime] = None
     status: Optional[str] = None
     pct_complete: Optional[int] = None
+
+    _check_dates = field_validator(
+        "planned_start", "planned_end", "actual_start", "actual_end", mode="after"
+    )(_reject_unreasonable_date)
+
+    @field_validator("pct_complete", mode="after")
+    @classmethod
+    def _clamp_pct(cls, v):
+        return None if v is None else max(0, min(100, v))
 
 
 class AlertUpsert(BaseModel):
@@ -82,6 +110,8 @@ class ManualExpenseCreate(BaseModel):
     category: Optional[str] = None
     phase_id: Optional[int] = None
 
+    _check_dates = field_validator("date", mode="after")(_reject_unreasonable_date)
+
 
 class ManualExpenseUpdate(BaseModel):
     date: Optional[datetime] = None
@@ -89,6 +119,8 @@ class ManualExpenseUpdate(BaseModel):
     amount: Optional[float] = None
     category: Optional[str] = None
     phase_id: Optional[int] = None
+
+    _check_dates = field_validator("date", mode="after")(_reject_unreasonable_date)
 
 
 class PhaseTemplateCreate(BaseModel):

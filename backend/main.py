@@ -34,6 +34,15 @@ def _migrate():
         "ALTER TABLE project_phases ADD COLUMN budget REAL DEFAULT 0",
         "ALTER TABLE transactions ADD COLUMN phase_id INTEGER REFERENCES project_phases(id)",
         "ALTER TABLE project_manual_expenses ADD COLUMN phase_id INTEGER REFERENCES project_phases(id)",
+        # One-time cleanup: a date-input typing glitch could previously save
+        # nonsensical years (e.g. 0001) which break every Gantt/range calculation.
+        "UPDATE project_phases SET planned_start = NULL WHERE planned_start IS NOT NULL AND CAST(strftime('%Y', planned_start) AS INTEGER) < 2000",
+        "UPDATE project_phases SET planned_end = NULL WHERE planned_end IS NOT NULL AND CAST(strftime('%Y', planned_end) AS INTEGER) < 2000",
+        "UPDATE project_phases SET actual_start = NULL WHERE actual_start IS NOT NULL AND CAST(strftime('%Y', actual_start) AS INTEGER) < 2000",
+        "UPDATE project_phases SET actual_end = NULL WHERE actual_end IS NOT NULL AND CAST(strftime('%Y', actual_end) AS INTEGER) < 2000",
+        "UPDATE projects SET start_date = NULL WHERE start_date IS NOT NULL AND CAST(strftime('%Y', start_date) AS INTEGER) < 2000",
+        "UPDATE projects SET end_date_estimated = NULL WHERE end_date_estimated IS NOT NULL AND CAST(strftime('%Y', end_date_estimated) AS INTEGER) < 2000",
+        "UPDATE projects SET end_date_actual = NULL WHERE end_date_actual IS NOT NULL AND CAST(strftime('%Y', end_date_actual) AS INTEGER) < 2000",
     ]
     with engine.connect() as conn:
         for sql in migrations:

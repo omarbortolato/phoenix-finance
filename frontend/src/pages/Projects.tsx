@@ -57,20 +57,12 @@ export default function Projects() {
               Land entitlement and minor subdivision deals
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate('/projects/settings')}
-              className="px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-            >
-              Configure phases
-            </button>
-            <button
-              onClick={() => setShowNew(true)}
-              className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium transition-colors"
-            >
-              + New Project
-            </button>
-          </div>
+          <button
+            onClick={() => setShowNew(true)}
+            className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium transition-colors"
+          >
+            + New Project
+          </button>
         </div>
 
         <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5 gap-0.5 w-fit">
@@ -207,12 +199,12 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={label}>Start date</label>
-            <input type="date" className={field} value={form.start_date || ''}
+            <input type="date" className={field} value={form.start_date || ''} min="2000-01-01" max="2099-12-31"
               onChange={e => setForm({ ...form, start_date: e.target.value })} />
           </div>
           <div>
             <label className={label}>Est. end date</label>
-            <input type="date" className={field} value={form.end_date_estimated || ''}
+            <input type="date" className={field} value={form.end_date_estimated || ''} min="2000-01-01" max="2099-12-31"
               onChange={e => setForm({ ...form, end_date_estimated: e.target.value })} />
           </div>
         </div>

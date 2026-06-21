@@ -185,11 +185,11 @@ function ProjectHeader({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={label}>Start date</label>
-          <input type="date" className={field} value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
+          <input type="date" className={field} value={form.start_date} min="2000-01-01" max="2099-12-31" onChange={e => setForm({ ...form, start_date: e.target.value })} />
         </div>
         <div>
           <label className={label}>Est. end date</label>
-          <input type="date" className={field} value={form.end_date_estimated} onChange={e => setForm({ ...form, end_date_estimated: e.target.value })} />
+          <input type="date" className={field} value={form.end_date_estimated} min="2000-01-01" max="2099-12-31" onChange={e => setForm({ ...form, end_date_estimated: e.target.value })} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -333,6 +333,8 @@ function ProjectAlertPanel({ projectId }: { projectId: string }) {
 
 // ─── Gantt tab ──────────────────────────────────────────────────────────────
 
+const DATE_BOUNDS = { min: '2000-01-01', max: '2099-12-31' }
+
 function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: ProjectPhase[]; onChange: () => void }) {
   const navigate = useNavigate()
   const [syncing, setSyncing] = useState(false)
@@ -369,6 +371,8 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
   }
 
   const field = 'text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+  const th = 'text-left py-2 px-2 text-[10px] font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider whitespace-nowrap'
+  const td = 'py-2 px-2 whitespace-nowrap'
 
   return (
     <div className="space-y-4">
@@ -376,7 +380,7 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Timeline</h2>
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/projects/settings')}
+            <button onClick={() => navigate('/configuration')}
               className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium">
               Configure phase templates
             </button>
@@ -397,9 +401,9 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
               onChange={e => setForm({ ...form, name: e.target.value })} />
             <input type="number" className={`${field} w-28`} placeholder="Budget $" value={form.budget}
               onChange={e => setForm({ ...form, budget: e.target.value })} />
-            <input type="date" className={field} title="Planned start" value={form.planned_start}
+            <input type="date" className={field} title="Planned start" value={form.planned_start} {...DATE_BOUNDS}
               onChange={e => setForm({ ...form, planned_start: e.target.value })} />
-            <input type="date" className={field} title="Planned end" value={form.planned_end}
+            <input type="date" className={field} title="Planned end" value={form.planned_end} {...DATE_BOUNDS}
               onChange={e => setForm({ ...form, planned_end: e.target.value })} />
             <button onClick={addPhase} disabled={!form.name.trim()}
               className="px-3 py-1 text-xs rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white font-medium transition-colors">
@@ -416,40 +420,85 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
           <div className="px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800">
             <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Phase details</h2>
           </div>
-          <div className="divide-y divide-zinc-50 dark:divide-zinc-800/60">
-            {phases.map(phase => (
-              <div key={phase.id} className="px-5 py-3 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200 w-32 flex-shrink-0 truncate">{phase.name}</span>
-                <select value={phase.status} onChange={e => updatePhase(phase, { status: e.target.value as ProjectPhase['status'] })}
-                  className={field}>
-                  <option value="not_started">Not started</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="blocked">Blocked</option>
-                </select>
-                <input type="date" value={phase.planned_start?.slice(0, 10) || ''}
-                  onChange={e => updatePhase(phase, { planned_start: e.target.value || undefined })}
-                  title="Planned start" className={field} />
-                <input type="date" value={phase.planned_end?.slice(0, 10) || ''}
-                  onChange={e => updatePhase(phase, { planned_end: e.target.value || undefined })}
-                  title="Planned end" className={field} />
-                <input type="number" min="0" max="100" value={phase.pct_complete}
-                  onChange={e => updatePhase(phase, { pct_complete: parseInt(e.target.value) || 0 })}
-                  title="% complete" className={`${field} w-16`} />
-                <div className="relative">
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400">$</span>
-                  <input type="number" value={phase.budget}
-                    onChange={e => updatePhase(phase, { budget: parseFloat(e.target.value) || 0 })}
-                    title="Phase budget" className={`${field} w-24 pl-4`} />
-                </div>
-                <span className="text-xs text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
-                  {formatUSD(phase.spent_so_far, true)} spent
-                </span>
-                <button onClick={async () => { await api.deletePhase(projectId, phase.id); onChange() }}
-                  className="text-xs text-zinc-400 hover:text-red-500 ml-auto">Remove</button>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-100 dark:border-zinc-800">
+                  <th className={th}>Phase</th>
+                  <th className={th}>Status</th>
+                  <th className={th}>Planned start</th>
+                  <th className={th}>Planned end</th>
+                  <th className={th}>Actual start</th>
+                  <th className={th}>Actual end</th>
+                  <th className={th}>% complete</th>
+                  <th className={th}>Budget</th>
+                  <th className={th}>Spent</th>
+                  <th className={th}></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800/60">
+                {phases.map(phase => (
+                  <tr key={phase.id}>
+                    <td className={`${td} px-2 pl-5`}>
+                      <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{phase.name}</span>
+                    </td>
+                    <td className={td}>
+                      <select value={phase.status} onChange={e => updatePhase(phase, { status: e.target.value as ProjectPhase['status'] })}
+                        className={field}>
+                        <option value="not_started">Not started</option>
+                        <option value="in_progress">In progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="blocked">Blocked</option>
+                      </select>
+                    </td>
+                    <td className={td}>
+                      <input type="date" value={phase.planned_start?.slice(0, 10) || ''} {...DATE_BOUNDS}
+                        onChange={e => updatePhase(phase, { planned_start: e.target.value || undefined })}
+                        className={field} />
+                    </td>
+                    <td className={td}>
+                      <input type="date" value={phase.planned_end?.slice(0, 10) || ''} {...DATE_BOUNDS}
+                        onChange={e => updatePhase(phase, { planned_end: e.target.value || undefined })}
+                        className={field} />
+                    </td>
+                    <td className={td}>
+                      <input type="date" value={phase.actual_start?.slice(0, 10) || ''} {...DATE_BOUNDS}
+                        onChange={e => updatePhase(phase, { actual_start: e.target.value || undefined })}
+                        className={field} />
+                    </td>
+                    <td className={td}>
+                      <input type="date" value={phase.actual_end?.slice(0, 10) || ''} {...DATE_BOUNDS}
+                        onChange={e => updatePhase(phase, { actual_end: e.target.value || undefined })}
+                        className={field} />
+                    </td>
+                    <td className={td}>
+                      <input type="number" min="0" max="100" value={phase.pct_complete}
+                        onChange={e => updatePhase(phase, { pct_complete: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })}
+                        className={`${field} w-16`} />
+                    </td>
+                    <td className={td}>
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400">$</span>
+                        <input type="number" value={phase.budget}
+                          onChange={e => updatePhase(phase, { budget: parseFloat(e.target.value) || 0 })}
+                          className={`${field} w-24 pl-4`} />
+                      </div>
+                    </td>
+                    <td className={`${td} text-xs text-zinc-400 dark:text-zinc-500`}>
+                      {formatUSD(phase.spent_so_far, true)}
+                    </td>
+                    <td className={`${td} pr-5`}>
+                      <button onClick={async () => { await api.deletePhase(projectId, phase.id); onChange() }}
+                        className="text-xs text-zinc-400 hover:text-red-500">Remove</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+          <p className="px-5 py-2.5 text-[11px] text-zinc-400 dark:text-zinc-500 border-t border-zinc-100 dark:border-zinc-800">
+            Budget is the target you set; Spent is computed automatically from Mercury transactions and manual expenses tagged to this phase.
+          </p>
         </div>
       )}
     </div>
@@ -553,7 +602,7 @@ function ManualExpensesSection({ projectId, phases }: { projectId: string; phase
 
       {adding && (
         <div className="px-5 py-3 border-b border-zinc-100 dark:border-zinc-800 flex flex-wrap items-center gap-2">
-          <input type="date" className={field} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+          <input type="date" className={field} value={form.date} min="2000-01-01" max="2099-12-31" onChange={e => setForm({ ...form, date: e.target.value })} />
           <input className={field} placeholder="Description" value={form.description}
             onChange={e => setForm({ ...form, description: e.target.value })} />
           <input type="number" className={`${field} w-28`} placeholder="Amount (-/+)" value={form.amount}
