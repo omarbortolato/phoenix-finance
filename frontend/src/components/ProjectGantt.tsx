@@ -207,53 +207,39 @@ export default function ProjectGantt({ phases, projectStart, projectEnd }: Props
 
   const today = new Date()
   const todayPct = today >= minDate && today <= maxDate ? pct(today) : null
-  const projectStartPct = pct(projectStartDate)
-  const projectEndPct = pct(projectEndDate)
 
   return (
     <div ref={containerRef} className="space-y-3">
-      <div className="flex items-center justify-between text-xs text-zinc-400 dark:text-zinc-500 px-1">
-        <span>{format(minDate, 'MMM d, yyyy')}</span>
+      <div className="flex items-center justify-end gap-2 px-1">
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">Compare estimated vs actual</span>
         <button
+          role="switch"
+          aria-checked={compareMode}
           onClick={() => setCompareMode(v => !v)}
-          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-            compareMode
-              ? 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'
-              : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
+          className={`relative inline-flex h-4 w-7 flex-shrink-0 items-center rounded-full transition-colors ${
+            compareMode ? 'bg-violet-600' : 'bg-zinc-300 dark:bg-zinc-600'
           }`}
         >
-          Compare estimated vs actual
+          <span
+            className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+              compareMode ? 'translate-x-3.5' : 'translate-x-0.5'
+            }`}
+          />
         </button>
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-zinc-400 dark:text-zinc-500 px-1">
+        <span>{format(minDate, 'MMM d, yyyy')}</span>
         <span>{format(maxDate, 'MMM d, yyyy')}</span>
       </div>
 
       <div className="relative space-y-3">
-        {projectStartPct !== null && (
-          <div
-            className="absolute top-0 bottom-0 w-px bg-zinc-400 dark:bg-zinc-500 z-10 pointer-events-none"
-            style={{ left: `${projectStartPct}%` }}
-            title={`Project start — ${fmtD(projectStart)}`}
-          >
-            <span className="absolute -top-4 -translate-x-1/2 text-[10px] font-bold text-zinc-500 dark:text-zinc-400">A</span>
-          </div>
-        )}
-        {projectEndPct !== null && (
-          <div
-            className="absolute top-0 bottom-0 w-px bg-zinc-400 dark:bg-zinc-500 z-10 pointer-events-none"
-            style={{ left: `${projectEndPct}%` }}
-            title={`Project end (estimated) — ${fmtD(projectEnd)}`}
-          >
-            <span className="absolute -top-4 -translate-x-1/2 text-[10px] font-bold text-zinc-500 dark:text-zinc-400">Z</span>
-          </div>
-        )}
         {todayPct !== null && (
           <div
             className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none"
             style={{ left: `${todayPct}%` }}
             title={`Today — ${format(today, 'MMM d, yyyy')}`}
-          >
-            <span className="absolute -top-4 -translate-x-1/2 text-[10px] font-bold text-red-500">T</span>
-          </div>
+          />
         )}
         {phases.map(phase => {
           const color = phase.color || '#7C3AED'
@@ -347,8 +333,7 @@ export default function ProjectGantt({ phases, projectStart, projectEnd }: Props
           Estimated
         </span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-violet-600" /> Actual</span>
-        <span className="flex items-center gap-1.5"><span className="w-px h-3 bg-red-400" /> Today (T)</span>
-        <span className="flex items-center gap-1.5"><span className="w-px h-3 bg-zinc-400 dark:bg-zinc-500" /> Project start (A) / end (Z)</span>
+        <span className="flex items-center gap-1.5"><span className="w-px h-3 bg-red-400" /> Today</span>
         <span className="text-zinc-300 dark:text-zinc-600">·</span>
         <span>Hover a bar for details, click to pin</span>
       </div>
