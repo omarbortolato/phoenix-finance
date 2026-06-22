@@ -32,6 +32,7 @@ def _migrate():
         "CREATE TABLE IF NOT EXISTS project_manual_expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL REFERENCES projects(id), date DATETIME NOT NULL, description TEXT NOT NULL, amount REAL NOT NULL, category TEXT, phase_id INTEGER REFERENCES project_phases(id), created_at DATETIME)",
         "ALTER TABLE phase_templates ADD COLUMN budget REAL DEFAULT 0",
         "ALTER TABLE project_phases ADD COLUMN budget REAL DEFAULT 0",
+        "ALTER TABLE phase_templates ADD COLUMN duration_days INTEGER DEFAULT 30",
         "ALTER TABLE transactions ADD COLUMN phase_id INTEGER REFERENCES project_phases(id)",
         "ALTER TABLE project_manual_expenses ADD COLUMN phase_id INTEGER REFERENCES project_phases(id)",
         # One-time cleanup: a date-input typing glitch could previously save

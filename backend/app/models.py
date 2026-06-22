@@ -97,14 +97,19 @@ class Project(Base):
 
 
 class PhaseTemplate(Base):
-    """Global, configurable phase template used to seed new projects' Gantt."""
+    """Global, configurable phase template used to seed new projects' Gantt.
+
+    Carries an estimated duration (days), not a budget — budget targets are
+    set per project/phase since they vary deal by deal, while the typical
+    timeline shape (how many days each phase usually takes) is reusable.
+    """
     __tablename__ = "phase_templates"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     sort_order = Column(Integer, default=0)
     color = Column(String)
-    budget = Column(Float, default=0.0)
+    duration_days = Column(Integer, default=30)
 
 
 class ProjectPhase(Base):

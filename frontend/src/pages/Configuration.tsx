@@ -8,7 +8,7 @@ export default function Configuration() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [templates, setTemplates] = useState<PhaseTemplate[]>([])
   const [newName, setNewName] = useState('')
-  const [newBudget, setNewBudget] = useState('')
+  const [newDuration, setNewDuration] = useState('')
   const [loading, setLoading] = useState(true)
 
   const load = () => {
@@ -29,20 +29,20 @@ export default function Configuration() {
     const name = newName.trim()
     if (!name) return
     const color = COLORS[templates.length % COLORS.length]
-    await api.createPhaseTemplate(name, color, parseFloat(newBudget) || 0)
+    await api.createPhaseTemplate(name, color, parseInt(newDuration) || 30)
     setNewName('')
-    setNewBudget('')
+    setNewDuration('')
     load()
   }
 
   const renameTemplate = async (t: PhaseTemplate, name: string) => {
-    await api.updatePhaseTemplate(t.id, name, t.color || undefined, t.budget)
+    await api.updatePhaseTemplate(t.id, name, t.color || undefined, t.duration_days)
     setTemplates(prev => prev.map(x => x.id === t.id ? { ...x, name } : x))
   }
 
-  const rebudgetTemplate = async (t: PhaseTemplate, budget: number) => {
-    await api.updatePhaseTemplate(t.id, t.name, t.color || undefined, budget)
-    setTemplates(prev => prev.map(x => x.id === t.id ? { ...x, budget } : x))
+  const redurateTemplate = async (t: PhaseTemplate, durationDays: number) => {
+    await api.updatePhaseTemplate(t.id, t.name, t.color || undefined, durationDays)
+    setTemplates(prev => prev.map(x => x.id === t.id ? { ...x, duration_days: durationDays } : x))
   }
 
   const move = async (idx: number, dir: 'up' | 'down') => {
@@ -73,8 +73,9 @@ export default function Configuration() {
         <div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 mb-1">Phase Templates</h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
-            Default phases (and their default budget) used to seed every new project's Gantt timeline.
-            Editing a template only affects projects you sync afterward — existing phases are untouched.
+            Default phases and their typical duration (days), used to pre-fill every new project's estimated
+            timeline — so you only need to correct dates, not build them from scratch. Budget stays per-project,
+            set it on each phase once the deal is created. Editing a template only affects projects you sync afterward.
           </p>
 
           <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
@@ -97,17 +98,18 @@ export default function Configuration() {
                       className="flex-1 text-sm bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-500 rounded px-1 text-zinc-800 dark:text-zinc-200"
                     />
                     <div className="relative flex-shrink-0">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400">$</span>
                       <input
                         type="number"
-                        defaultValue={t.budget || ''}
-                        placeholder="0"
-                        onBlur={e => rebudgetTemplate(t, parseFloat(e.target.value) || 0)}
-                        title="Default budget for this phase"
-                        className="w-24 pl-4 pr-1 py-1 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg
+                        min="0"
+                        defaultValue={t.duration_days || ''}
+                        placeholder="30"
+                        onBlur={e => redurateTemplate(t, parseInt(e.target.value) || 0)}
+                        title="Estimated duration in days"
+                        className="w-20 pr-9 pl-2 py-1 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg
                           bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300
                           focus:outline-none focus:ring-1 focus:ring-violet-500"
                       />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400">days</span>
                     </div>
                     <button onClick={() => move(idx, 'up')} disabled={idx === 0}
                       className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 disabled:opacity-20">
@@ -143,11 +145,12 @@ export default function Configuration() {
               />
               <input
                 type="number"
-                value={newBudget}
-                onChange={e => setNewBudget(e.target.value)}
+                min="0"
+                value={newDuration}
+                onChange={e => setNewDuration(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') addTemplate() }}
-                placeholder="Budget $"
-                className="w-28 text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5
+                placeholder="Days"
+                className="w-24 text-sm border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5
                   bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200
                   focus:outline-none focus:ring-2 focus:ring-violet-500"
               />

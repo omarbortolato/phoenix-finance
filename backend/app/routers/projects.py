@@ -126,7 +126,7 @@ class ManualExpenseUpdate(BaseModel):
 class PhaseTemplateCreate(BaseModel):
     name: str
     color: Optional[str] = None
-    budget: float = 0.0
+    duration_days: int = 30
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -397,19 +397,31 @@ def create_phase(
 
 @router.post("/{project_id}/phases/sync-from-templates")
 def sync_phases_from_templates(project_id: str, db: Session = Depends(get_db), _: str = Depends(get_current_user)):
-    _get_or_404(db, project_id)
+    """
+    Create any missing phases from the global templates, chaining estimated
+    dates back-to-back from the project's start date using each template's
+    duration_days — so a new project's whole roadmap is pre-filled and only
+    needs correcting, not building from scratch.
+    """
+    project = _get_or_404(db, project_id)
     existing_names = {
         p.name for p in db.query(ProjectPhase).filter(ProjectPhase.project_id == project_id).all()
     }
     templates = db.query(PhaseTemplate).order_by(PhaseTemplate.sort_order).all()
+
+    cursor = project.start_date or datetime.now(timezone.utc)
     created = 0
     for t in templates:
-        if t.name in existing_names:
-            continue
-        db.add(ProjectPhase(
-            project_id=project_id, name=t.name, sort_order=t.sort_order, color=t.color, budget=t.budget or 0.0,
-        ))
-        created += 1
+        duration = t.duration_days or 0
+        planned_start = cursor
+        planned_end = cursor + timedelta(days=duration)
+        if t.name not in existing_names:
+            db.add(ProjectPhase(
+                project_id=project_id, name=t.name, sort_order=t.sort_order, color=t.color,
+                planned_start=planned_start, planned_end=planned_end,
+            ))
+            created += 1
+        cursor = planned_end
     db.commit()
     return {"created": created}
 
@@ -531,6 +543,7 @@ def update_manual_expense(
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(expense, k, v)
     db.commit()
+    db.refresh(expense)
 
     from app.sync import check_project_alerts
     check_project_alerts(db, [expense.project_id])
@@ -559,7 +572,7 @@ def list_phase_templates(db: Session = Depends(get_db), _: str = Depends(get_cur
 @template_router.post("", status_code=201)
 def create_phase_template(body: PhaseTemplateCreate, db: Session = Depends(get_db), _: str = Depends(get_current_user)):
     max_order = db.query(func.max(PhaseTemplate.sort_order)).scalar() or 0
-    template = PhaseTemplate(name=body.name, color=body.color, budget=body.budget, sort_order=max_order + 1)
+    template = PhaseTemplate(name=body.name, color=body.color, duration_days=body.duration_days, sort_order=max_order + 1)
     db.add(template)
     db.commit()
     db.refresh(template)
@@ -586,8 +599,9 @@ def update_phase_template(
         raise HTTPException(404, "Template not found")
     t.name = body.name
     t.color = body.color
-    t.budget = body.budget
+    t.duration_days = body.duration_days
     db.commit()
+    db.refresh(t)
     return t
 
 

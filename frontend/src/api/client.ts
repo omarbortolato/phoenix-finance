@@ -148,7 +148,7 @@ export interface PhaseTemplate {
   name: string
   sort_order: number
   color?: string | null
-  budget: number
+  duration_days: number
 }
 
 export interface PhaseCreateInput {
@@ -282,10 +282,10 @@ export const api = {
 
   // Global phase templates (configurable in Settings)
   phaseTemplates: () => req<PhaseTemplate[]>('/phase-templates'),
-  createPhaseTemplate: (name: string, color?: string, budget = 0) =>
-    req<PhaseTemplate>('/phase-templates', { method: 'POST', body: JSON.stringify({ name, color, budget }) }),
-  updatePhaseTemplate: (id: number, name: string, color?: string, budget = 0) =>
-    req<PhaseTemplate>(`/phase-templates/${id}`, { method: 'PATCH', body: JSON.stringify({ name, color, budget }) }),
+  createPhaseTemplate: (name: string, color?: string, durationDays = 30) =>
+    req<PhaseTemplate>('/phase-templates', { method: 'POST', body: JSON.stringify({ name, color, duration_days: durationDays }) }),
+  updatePhaseTemplate: (id: number, name: string, color?: string, durationDays = 30) =>
+    req<PhaseTemplate>(`/phase-templates/${id}`, { method: 'PATCH', body: JSON.stringify({ name, color, duration_days: durationDays }) }),
   deletePhaseTemplate: (id: number) => req(`/phase-templates/${id}`, { method: 'DELETE' }),
   reorderPhaseTemplates: (items: { id: number; sort_order: number }[]) =>
     req('/phase-templates/reorder', { method: 'PATCH', body: JSON.stringify(items) }),
