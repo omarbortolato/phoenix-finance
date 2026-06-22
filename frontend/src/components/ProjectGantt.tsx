@@ -4,6 +4,8 @@ import { differenceInDays, parseISO, format } from 'date-fns'
 
 interface Props {
   phases: ProjectPhase[]
+  projectStart?: string | null
+  projectEnd?: string | null
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -152,7 +154,7 @@ function PhaseTooltip({ phase, pinned, onClose }: { phase: ProjectPhase; pinned:
   )
 }
 
-export default function ProjectGantt({ phases }: Props) {
+export default function ProjectGantt({ phases, projectStart, projectEnd }: Props) {
   const [compareMode, setCompareMode] = useState(false)
   const [hoverId, setHoverId] = useState<number | null>(null)
   const [pinnedId, setPinnedId] = useState<number | null>(null)
@@ -177,8 +179,12 @@ export default function ProjectGantt({ phases }: Props) {
     )
   }
 
+  const projectStartDate = safeDate(projectStart)
+  const projectEndDate = safeDate(projectEnd)
+
   const dates = phases
     .flatMap(p => [safeDate(p.planned_start), safeDate(p.planned_end), safeDate(p.actual_start), safeDate(p.actual_end)])
+    .concat([projectStartDate, projectEndDate])
     .filter((d): d is Date => d !== null)
 
   if (!dates.length) {
@@ -201,6 +207,8 @@ export default function ProjectGantt({ phases }: Props) {
 
   const today = new Date()
   const todayPct = today >= minDate && today <= maxDate ? pct(today) : null
+  const projectStartPct = pct(projectStartDate)
+  const projectEndPct = pct(projectEndDate)
 
   return (
     <div ref={containerRef} className="space-y-3">
@@ -220,12 +228,32 @@ export default function ProjectGantt({ phases }: Props) {
       </div>
 
       <div className="relative space-y-3">
+        {projectStartPct !== null && (
+          <div
+            className="absolute top-0 bottom-0 w-px bg-zinc-400 dark:bg-zinc-500 z-10 pointer-events-none"
+            style={{ left: `${projectStartPct}%` }}
+            title={`Project start — ${fmtD(projectStart)}`}
+          >
+            <span className="absolute -top-4 -translate-x-1/2 text-[10px] font-bold text-zinc-500 dark:text-zinc-400">A</span>
+          </div>
+        )}
+        {projectEndPct !== null && (
+          <div
+            className="absolute top-0 bottom-0 w-px bg-zinc-400 dark:bg-zinc-500 z-10 pointer-events-none"
+            style={{ left: `${projectEndPct}%` }}
+            title={`Project end (estimated) — ${fmtD(projectEnd)}`}
+          >
+            <span className="absolute -top-4 -translate-x-1/2 text-[10px] font-bold text-zinc-500 dark:text-zinc-400">Z</span>
+          </div>
+        )}
         {todayPct !== null && (
           <div
             className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none"
             style={{ left: `${todayPct}%` }}
-            title="Today"
-          />
+            title={`Today — ${format(today, 'MMM d, yyyy')}`}
+          >
+            <span className="absolute -top-4 -translate-x-1/2 text-[10px] font-bold text-red-500">T</span>
+          </div>
         )}
         {phases.map(phase => {
           const color = phase.color || '#7C3AED'
@@ -319,7 +347,8 @@ export default function ProjectGantt({ phases }: Props) {
           Estimated
         </span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-violet-600" /> Actual</span>
-        <span className="flex items-center gap-1.5"><span className="w-px h-3 bg-red-400" /> Today</span>
+        <span className="flex items-center gap-1.5"><span className="w-px h-3 bg-red-400" /> Today (T)</span>
+        <span className="flex items-center gap-1.5"><span className="w-px h-3 bg-zinc-400 dark:bg-zinc-500" /> Project start (A) / end (Z)</span>
         <span className="text-zinc-300 dark:text-zinc-600">·</span>
         <span>Hover a bar for details, click to pin</span>
       </div>

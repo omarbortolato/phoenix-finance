@@ -396,34 +396,55 @@ def create_phase(
 
 
 @router.post("/{project_id}/phases/sync-from-templates")
-def sync_phases_from_templates(project_id: str, db: Session = Depends(get_db), _: str = Depends(get_current_user)):
+def sync_phases_from_templates(
+    project_id: str, force: bool = False,
+    db: Session = Depends(get_db), _: str = Depends(get_current_user),
+):
     """
     Create any missing phases from the global templates, chaining estimated
     dates back-to-back from the project's start date using each template's
     duration_days — so a new project's whole roadmap is pre-filled and only
     needs correcting, not building from scratch.
+
+    force=True additionally resets any existing phase whose name matches a
+    template back to the template's planned dates and clears its actual
+    progress (status/actual dates/% complete) — used when the user confirms
+    they want to discard what they've entered and restart from the template.
+    Phases with no matching template (custom, ad-hoc ones) are never touched.
     """
     project = _get_or_404(db, project_id)
-    existing_names = {
-        p.name for p in db.query(ProjectPhase).filter(ProjectPhase.project_id == project_id).all()
+    existing = {
+        p.name: p for p in db.query(ProjectPhase).filter(ProjectPhase.project_id == project_id).all()
     }
     templates = db.query(PhaseTemplate).order_by(PhaseTemplate.sort_order).all()
 
     cursor = project.start_date or datetime.now(timezone.utc)
     created = 0
+    updated = 0
     for t in templates:
         duration = t.duration_days or 0
         planned_start = cursor
         planned_end = cursor + timedelta(days=duration)
-        if t.name not in existing_names:
+        existing_phase = existing.get(t.name)
+        if existing_phase is None:
             db.add(ProjectPhase(
                 project_id=project_id, name=t.name, sort_order=t.sort_order, color=t.color,
                 planned_start=planned_start, planned_end=planned_end,
             ))
             created += 1
+        elif force:
+            existing_phase.planned_start = planned_start
+            existing_phase.planned_end = planned_end
+            existing_phase.color = t.color
+            existing_phase.sort_order = t.sort_order
+            existing_phase.actual_start = None
+            existing_phase.actual_end = None
+            existing_phase.status = "not_started"
+            existing_phase.pct_complete = 0
+            updated += 1
         cursor = planned_end
     db.commit()
-    return {"created": created}
+    return {"created": created, "updated": updated}
 
 
 @router.patch("/{project_id}/phases/reorder")

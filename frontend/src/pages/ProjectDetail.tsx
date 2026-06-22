@@ -89,7 +89,7 @@ export default function ProjectDetail() {
           ))}
         </div>
 
-        {tab === 'gantt' && <GanttTab projectId={id} phases={phases} onChange={load} />}
+        {tab === 'gantt' && <GanttTab projectId={id} project={project} phases={phases} onChange={load} />}
         {tab === 'burndown' && <BurndownTab projectId={id} />}
         {tab === 'transactions' && <TransactionsTab projectId={id} accounts={sidebarAccounts} phases={phases} />}
       </div>
@@ -335,21 +335,38 @@ function ProjectAlertPanel({ projectId }: { projectId: string }) {
 
 const DATE_BOUNDS = { min: '2000-01-01', max: '2099-12-31' }
 
-function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: ProjectPhase[]; onChange: () => void }) {
-  const navigate = useNavigate()
+function GanttTab({
+  projectId, project, phases, onChange,
+}: { projectId: string; project: Project; phases: ProjectPhase[]; onChange: () => void }) {
   const [syncing, setSyncing] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
   const [form, setForm] = useState({ name: '', budget: '', planned_start: '', planned_end: '' })
 
-  const syncTemplates = async () => {
+  const hasPhaseData = phases.some(p =>
+    p.status !== 'not_started' || p.actual_start || p.actual_end || p.pct_complete > 0
+  )
+
+  const runSync = async (force: boolean) => {
     setSyncing(true)
     try {
-      const res = await api.syncPhasesFromTemplates(projectId)
-      if (res.created === 0) {
-        setAdding(true) // no templates configured (or all already added) — nudge straight into manual add
+      const res = await api.syncPhasesFromTemplates(projectId, force)
+      if (res.created === 0 && res.updated === 0 && phases.length === 0) {
+        setAdding(true) // no templates configured at all — nudge straight into manual add
       }
       onChange()
-    } finally { setSyncing(false) }
+    } finally {
+      setSyncing(false)
+      setConfirmReset(false)
+    }
+  }
+
+  const syncTemplates = () => {
+    if (phases.length > 0 && hasPhaseData) {
+      setConfirmReset(true) // would overwrite entered progress — confirm first
+      return
+    }
+    runSync(false)
   }
 
   const addPhase = async () => {
@@ -380,10 +397,6 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Timeline</h2>
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/configuration')}
-              className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium">
-              Configure phase templates
-            </button>
             <button onClick={syncTemplates} disabled={syncing}
               className="text-xs text-violet-600 hover:text-violet-700 disabled:opacity-40 font-medium">
               {syncing ? 'Syncing…' : 'Sync phases from templates'}
@@ -394,6 +407,29 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
             </button>
           </div>
         </div>
+
+        {confirmReset && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 w-full max-w-sm p-5 space-y-4">
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Overwrite phase data?</h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Some phases already have progress or actual dates entered. Re-syncing from templates will reset
+                matching phases to the template's estimated dates and clear their status, actual dates, and %
+                complete. Custom phases not in any template are left untouched. This can't be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setConfirmReset(false)}
+                  className="px-3 py-1.5 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
+                  No, cancel
+                </button>
+                <button onClick={() => runSync(true)} disabled={syncing}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white font-medium transition-colors">
+                  {syncing ? 'Resetting…' : 'Yes, overwrite'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {adding && (
           <div className="flex flex-wrap items-center gap-2 mb-4 p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/60">
@@ -412,7 +448,7 @@ function GanttTab({ projectId, phases, onChange }: { projectId: string; phases: 
           </div>
         )}
 
-        <ProjectGantt phases={phases} />
+        <ProjectGantt phases={phases} projectStart={project.start_date} projectEnd={project.end_date_estimated} />
       </div>
 
       {phases.length > 0 && (

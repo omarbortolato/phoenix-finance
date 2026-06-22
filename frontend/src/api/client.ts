@@ -265,8 +265,8 @@ export const api = {
   projectPhases: (id: string) => req<ProjectPhase[]>(`/projects/${id}/phases`),
   createPhase: (projectId: string, body: PhaseCreateInput) =>
     req<ProjectPhase>(`/projects/${projectId}/phases`, { method: 'POST', body: JSON.stringify(body) }),
-  syncPhasesFromTemplates: (id: string) =>
-    req<{ created: number }>(`/projects/${id}/phases/sync-from-templates`, { method: 'POST' }),
+  syncPhasesFromTemplates: (id: string, force = false) =>
+    req<{ created: number; updated: number }>(`/projects/${id}/phases/sync-from-templates${force ? '?force=true' : ''}`, { method: 'POST' }),
   updatePhase: (projectId: string, phaseId: number, body: Partial<ProjectPhase>) =>
     req<ProjectPhase>(`/projects/${projectId}/phases/${phaseId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   reorderPhases: (projectId: string, items: { id: number; sort_order: number }[]) =>
