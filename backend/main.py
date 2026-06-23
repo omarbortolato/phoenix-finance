@@ -44,6 +44,11 @@ def _migrate():
         "UPDATE projects SET start_date = NULL WHERE start_date IS NOT NULL AND CAST(strftime('%Y', start_date) AS INTEGER) < 2000",
         "UPDATE projects SET end_date_estimated = NULL WHERE end_date_estimated IS NOT NULL AND CAST(strftime('%Y', end_date_estimated) AS INTEGER) < 2000",
         "UPDATE projects SET end_date_actual = NULL WHERE end_date_actual IS NOT NULL AND CAST(strftime('%Y', end_date_actual) AS INTEGER) < 2000",
+        "ALTER TABLE projects ADD COLUMN bank_account_id TEXT REFERENCES accounts(id)",
+        "ALTER TABLE projects ADD COLUMN fund_collected_amount REAL DEFAULT 0",
+        "ALTER TABLE projects ADD COLUMN fund_interest_rate REAL DEFAULT 20.0",
+        "ALTER TABLE projects ADD COLUMN fund_collected_date DATETIME",
+        "CREATE TABLE IF NOT EXISTS project_cost_items (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL REFERENCES projects(id), description TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, created_at DATETIME)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

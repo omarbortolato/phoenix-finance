@@ -6,6 +6,7 @@ interface Props {
   phases: ProjectPhase[]
   projectStart?: string | null
   projectEnd?: string | null
+  compareMode: boolean
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -154,8 +155,7 @@ function PhaseTooltip({ phase, pinned, onClose }: { phase: ProjectPhase; pinned:
   )
 }
 
-export default function ProjectGantt({ phases, projectStart, projectEnd }: Props) {
-  const [compareMode, setCompareMode] = useState(false)
+export default function ProjectGantt({ phases, projectStart, projectEnd, compareMode }: Props) {
   const [hoverId, setHoverId] = useState<number | null>(null)
   const [pinnedId, setPinnedId] = useState<number | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -209,38 +209,26 @@ export default function ProjectGantt({ phases, projectStart, projectEnd }: Props
   const todayPct = today >= minDate && today <= maxDate ? pct(today) : null
 
   return (
-    <div ref={containerRef} className="space-y-3">
-      <div className="flex items-center justify-end gap-2 px-1">
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">Compare estimated vs actual</span>
-        <button
-          role="switch"
-          aria-checked={compareMode}
-          onClick={() => setCompareMode(v => !v)}
-          className={`relative inline-flex h-4 w-7 flex-shrink-0 items-center rounded-full transition-colors ${
-            compareMode ? 'bg-violet-600' : 'bg-zinc-300 dark:bg-zinc-600'
-          }`}
-        >
-          <span
-            className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-              compareMode ? 'translate-x-3.5' : 'translate-x-0.5'
-            }`}
-          />
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between text-xs text-zinc-400 dark:text-zinc-500 px-1">
-        <span>{format(minDate, 'MMM d, yyyy')}</span>
-        <span>{format(maxDate, 'MMM d, yyyy')}</span>
+    <div ref={containerRef} className="space-y-2">
+      <div className="flex items-center gap-3 px-1">
+        <div className="w-40 flex-shrink-0" />
+        <div className="flex-1 relative h-4 text-xs text-zinc-400 dark:text-zinc-500">
+          <span className="absolute left-0">{format(minDate, 'MMM d, yyyy')}</span>
+          {todayPct !== null && (
+            <span
+              className="absolute -translate-x-1/2 text-red-400 font-medium"
+              style={{ left: `${todayPct}%` }}
+            >
+              Today
+            </span>
+          )}
+          <span className="absolute right-0">{format(maxDate, 'MMM d, yyyy')}</span>
+        </div>
+        <span className="w-10 flex-shrink-0 text-left text-xs text-zinc-400 dark:text-zinc-500">Progress</span>
+        <span className="w-28 flex-shrink-0 text-right text-xs text-zinc-400 dark:text-zinc-500">Bdg vs Act</span>
       </div>
 
       <div className="relative space-y-3">
-        {todayPct !== null && (
-          <div
-            className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none"
-            style={{ left: `${todayPct}%` }}
-            title={`Today — ${format(today, 'MMM d, yyyy')}`}
-          />
-        )}
         {phases.map(phase => {
           const color = phase.color || '#7C3AED'
           const showTooltip = hoverId === phase.id || pinnedId === phase.id
@@ -279,9 +267,12 @@ export default function ProjectGantt({ phases, projectStart, projectEnd }: Props
                       ? bar({ startPct: pStart, endPct: Math.max(pEnd, pStart + 0.5), solid: false }, color, 'estimate')
                       : <span className="absolute inset-0 flex items-center px-2 text-[10px] text-zinc-400 dark:text-zinc-500">No estimate set</span>}
                   </div>
+                  {todayPct !== null && (
+                    <div className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none" style={{ left: `${todayPct}%` }} />
+                  )}
                   {showTooltip && <PhaseTooltip phase={phase} pinned={isPinned} onClose={() => setPinnedId(null)} />}
                 </div>
-                <span className="w-10 flex-shrink-0 text-right text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">
+                <span className="w-10 flex-shrink-0 text-left text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">
                   {phase.pct_complete}%
                 </span>
                 <span className="w-28 flex-shrink-0 text-right text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">
@@ -314,9 +305,12 @@ export default function ProjectGantt({ phases, projectStart, projectEnd }: Props
                 ) : (
                   segments.map((seg, i) => bar(seg, color, i))
                 )}
+                {todayPct !== null && (
+                  <div className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none" style={{ left: `${todayPct}%` }} />
+                )}
                 {showTooltip && <PhaseTooltip phase={phase} pinned={isPinned} onClose={() => setPinnedId(null)} />}
               </div>
-              <span className="w-10 flex-shrink-0 text-right text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">
+              <span className="w-10 flex-shrink-0 text-left text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">
                 {phase.pct_complete}%
               </span>
               <span className="w-28 flex-shrink-0 text-right text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">

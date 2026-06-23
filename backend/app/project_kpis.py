@@ -79,11 +79,13 @@ def _status_color(project, spent_so_far: float, budget_total: float) -> str:
     return "red"
 
 
-def compute_project_kpis(project, transactions: list, manual_expenses: list) -> dict:
+def compute_project_kpis(project, transactions: list, manual_expenses: list, cost_items: list | None = None) -> dict:
     """
     transactions: Transaction rows tagged to this project
     manual_expenses: ProjectManualExpense rows for this project
+    cost_items: ProjectCostItem rows for this project (free-form cost lines, e.g. legal fees)
     """
+    cost_items = cost_items or []
     cash_flows: list[tuple[datetime, float]] = []
     for t in transactions:
         d = _aware(t.created_at or t.posted_at)
@@ -103,6 +105,9 @@ def compute_project_kpis(project, transactions: list, manual_expenses: list) -> 
     budget_remaining = budget_total - spent_so_far
     pct_budget_used = (spent_so_far / budget_total * 100) if budget_total else None
 
+    project_costs_total = sum(c.amount or 0 for c in cost_items)
+    estimated_profit = revenue_estimate - budget_total - project_costs_total
+
     margin_estimate = revenue_estimate - budget_total
     roi_estimate_pct = (margin_estimate / budget_total * 100) if budget_total else None
 
@@ -112,14 +117,25 @@ def compute_project_kpis(project, transactions: list, manual_expenses: list) -> 
         irr_flows.append((end_estimated, revenue_remaining))
     estimated_irr = xirr(irr_flows)
 
+    fund_collected_amount = project.fund_collected_amount or 0
+    fund_interest_rate = project.fund_interest_rate if project.fund_interest_rate is not None else 20.0
+    fund_collected_date = _aware(project.fund_collected_date)
+    fund_interest_accrued = 0.0
+    if fund_collected_amount and fund_collected_date:
+        days_elapsed = max((datetime.now(timezone.utc) - fund_collected_date).days, 0)
+        fund_interest_accrued = fund_collected_amount * (fund_interest_rate / 100) * (days_elapsed / 365.0)
+
     return {
         "spent_so_far": round(spent_so_far, 2),
         "revenue_actual": round(revenue_actual, 2),
         "revenue_remaining": round(revenue_remaining, 2),
         "budget_remaining": round(budget_remaining, 2),
         "pct_budget_used": round(pct_budget_used, 1) if pct_budget_used is not None else None,
+        "project_costs_total": round(project_costs_total, 2),
+        "estimated_profit": round(estimated_profit, 2),
         "margin_estimate": round(margin_estimate, 2),
         "roi_estimate_pct": round(roi_estimate_pct, 1) if roi_estimate_pct is not None else None,
         "estimated_irr_pct": round(estimated_irr * 100, 1) if estimated_irr is not None else None,
         "status_color": _status_color(project, spent_so_far, budget_total),
+        "fund_interest_accrued": round(fund_interest_accrued, 2),
     }

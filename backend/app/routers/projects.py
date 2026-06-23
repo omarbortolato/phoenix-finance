@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import PhaseTemplate, Project, ProjectBudgetAlert, ProjectManualExpense, ProjectPhase, Transaction
+from app.models import (
+    Account, PhaseTemplate, Project, ProjectBudgetAlert, ProjectCostItem,
+    ProjectManualExpense, ProjectPhase, Transaction,
+)
 from app.project_kpis import compute_project_kpis
 
 router = APIRouter()
@@ -43,8 +46,14 @@ class ProjectCreate(BaseModel):
     budget_total: float = 0.0
     revenue_estimate: float = 0.0
     notes: Optional[str] = None
+    bank_account_id: Optional[str] = None
+    fund_collected_amount: float = 0.0
+    fund_interest_rate: float = 20.0
+    fund_collected_date: Optional[datetime] = None
 
-    _check_dates = field_validator("start_date", "end_date_estimated", mode="after")(_reject_unreasonable_date)
+    _check_dates = field_validator(
+        "start_date", "end_date_estimated", "fund_collected_date", mode="after"
+    )(_reject_unreasonable_date)
 
 
 class ProjectUpdate(BaseModel):
@@ -60,9 +69,13 @@ class ProjectUpdate(BaseModel):
     budget_total: Optional[float] = None
     revenue_estimate: Optional[float] = None
     notes: Optional[str] = None
+    bank_account_id: Optional[str] = None
+    fund_collected_amount: Optional[float] = None
+    fund_interest_rate: Optional[float] = None
+    fund_collected_date: Optional[datetime] = None
 
     _check_dates = field_validator(
-        "start_date", "end_date_estimated", "end_date_actual", mode="after"
+        "start_date", "end_date_estimated", "end_date_actual", "fund_collected_date", mode="after"
     )(_reject_unreasonable_date)
 
 
@@ -129,6 +142,16 @@ class PhaseTemplateCreate(BaseModel):
     duration_days: int = 30
 
 
+class CostItemCreate(BaseModel):
+    description: str
+    amount: float
+
+
+class CostItemUpdate(BaseModel):
+    description: Optional[str] = None
+    amount: Optional[float] = None
+
+
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 def _project_transactions(db: Session, project_id: str) -> list[Transaction]:
@@ -142,7 +165,15 @@ def _project_transactions(db: Session, project_id: str) -> list[Transaction]:
 def _project_to_dict(db: Session, project: Project) -> dict:
     txns = _project_transactions(db, project.id)
     expenses = db.query(ProjectManualExpense).filter(ProjectManualExpense.project_id == project.id).all()
-    kpis = compute_project_kpis(project, txns, expenses)
+    cost_items = db.query(ProjectCostItem).filter(ProjectCostItem.project_id == project.id).all()
+    kpis = compute_project_kpis(project, txns, expenses, cost_items)
+
+    bank_balance = None
+    if project.bank_account_id:
+        account = db.query(Account).filter(Account.id == project.bank_account_id).first()
+        if account:
+            bank_balance = account.available_balance
+
     return {
         "id": project.id,
         "code": project.code,
@@ -157,6 +188,11 @@ def _project_to_dict(db: Session, project: Project) -> dict:
         "budget_total": project.budget_total,
         "revenue_estimate": project.revenue_estimate,
         "notes": project.notes,
+        "bank_account_id": project.bank_account_id,
+        "bank_balance": bank_balance,
+        "fund_collected_amount": project.fund_collected_amount,
+        "fund_interest_rate": project.fund_interest_rate,
+        "fund_collected_date": project.fund_collected_date,
         **kpis,
     }
 
@@ -197,6 +233,10 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db), _: str = 
         budget_total=body.budget_total,
         revenue_estimate=body.revenue_estimate,
         notes=body.notes,
+        bank_account_id=body.bank_account_id,
+        fund_collected_amount=body.fund_collected_amount,
+        fund_interest_rate=body.fund_interest_rate,
+        fund_collected_date=body.fund_collected_date,
     )
     db.add(project)
     db.commit()
@@ -230,11 +270,65 @@ def update_project(project_id: str, body: ProjectUpdate, db: Session = Depends(g
 
 
 @router.delete("/{project_id}", status_code=204)
-def delete_project(project_id: str, db: Session = Depends(get_db), _: str = Depends(get_current_user)):
+def delete_project(
+    project_id: str, force: bool = False,
+    db: Session = Depends(get_db), _: str = Depends(get_current_user),
+):
+    """force=True untags any Mercury transactions first instead of blocking the delete —
+    used when the user explicitly confirms they want the project gone for good."""
     project = _get_or_404(db, project_id)
-    if db.query(Transaction).filter(Transaction.project_id == project_id).first():
-        raise HTTPException(409, "Cannot delete a project with tagged transactions. Untag them first.")
+    tagged = db.query(Transaction).filter(Transaction.project_id == project_id)
+    if tagged.first():
+        if not force:
+            raise HTTPException(409, "Cannot delete a project with tagged transactions. Untag them first.")
+        tagged.update({Transaction.project_id: None, Transaction.phase_id: None})
     db.delete(project)
+    db.commit()
+
+
+# ─── Project cost items ─────────────────────────────────────────────────────
+
+@router.get("/{project_id}/cost-items")
+def list_cost_items(project_id: str, db: Session = Depends(get_db), _: str = Depends(get_current_user)):
+    return (
+        db.query(ProjectCostItem)
+        .filter(ProjectCostItem.project_id == project_id)
+        .order_by(ProjectCostItem.created_at)
+        .all()
+    )
+
+
+@router.post("/{project_id}/cost-items", status_code=201)
+def create_cost_item(
+    project_id: str, body: CostItemCreate,
+    db: Session = Depends(get_db), _: str = Depends(get_current_user),
+):
+    _get_or_404(db, project_id)
+    item = ProjectCostItem(project_id=project_id, description=body.description, amount=body.amount)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/cost-items/{item_id}")
+def update_cost_item(
+    item_id: int, body: CostItemUpdate,
+    db: Session = Depends(get_db), _: str = Depends(get_current_user),
+):
+    item = db.query(ProjectCostItem).filter(ProjectCostItem.id == item_id).first()
+    if not item:
+        raise HTTPException(404, "Cost item not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(item, k, v)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/cost-items/{item_id}", status_code=204)
+def delete_cost_item(item_id: int, db: Session = Depends(get_db), _: str = Depends(get_current_user)):
+    db.query(ProjectCostItem).filter(ProjectCostItem.id == item_id).delete()
     db.commit()
 
 

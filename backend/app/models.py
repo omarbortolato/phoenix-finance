@@ -86,14 +86,20 @@ class Project(Base):
     start_date = Column(DateTime(timezone=True))
     end_date_estimated = Column(DateTime(timezone=True))
     end_date_actual = Column(DateTime(timezone=True))
-    budget_total = Column(Float, default=0.0)
-    revenue_estimate = Column(Float, default=0.0)
+    budget_total = Column(Float, default=0.0)  # labeled "Budget Entitlements" in the UI
+    revenue_estimate = Column(Float, default=0.0)  # labeled "Estimated Sale Price" in the UI
     notes = Column(Text)
+    bank_account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
+    fund_collected_amount = Column(Float, default=0.0)
+    fund_interest_rate = Column(Float, default=20.0)  # annual %, simple interest
+    fund_collected_date = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     transactions = relationship("Transaction", back_populates="project")
     phases = relationship("ProjectPhase", back_populates="project", cascade="all, delete-orphan")
     manual_expenses = relationship("ProjectManualExpense", back_populates="project", cascade="all, delete-orphan")
+    cost_items = relationship("ProjectCostItem", back_populates="project", cascade="all, delete-orphan")
+    bank_account = relationship("Account", foreign_keys=[bank_account_id])
 
 
 class PhaseTemplate(Base):
@@ -159,6 +165,19 @@ class ProjectManualExpense(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("Project", back_populates="manual_expenses")
+
+
+class ProjectCostItem(Base):
+    """Free-form cost line item (e.g. legal fees) rolled up into the 'Project Costs' KPI."""
+    __tablename__ = "project_cost_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=False)
+    description = Column(String, nullable=False)
+    amount = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("Project", back_populates="cost_items")
 
 
 class SyncLog(Base):

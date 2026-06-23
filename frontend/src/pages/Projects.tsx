@@ -135,6 +135,7 @@ export default function Projects() {
 
       {showNew && (
         <NewProjectModal
+          accounts={accounts}
           onClose={() => setShowNew(false)}
           onCreated={() => { setShowNew(false); load() }}
         />
@@ -143,7 +144,7 @@ export default function Projects() {
   )
 }
 
-function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function NewProjectModal({ accounts, onClose, onCreated }: { accounts: Account[]; onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState<ProjectCreateInput>({
     code: '', name: '', project_type: 'entitlement', status: 'active',
     budget_total: 0, revenue_estimate: 0,
@@ -211,21 +212,31 @@ function NewProjectModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={label}>Budget total ($)</label>
+            <label className={label}>Budget Entitlements ($)</label>
             <input type="number" className={field} value={form.budget_total}
               onChange={e => setForm({ ...form, budget_total: parseFloat(e.target.value) || 0 })} />
           </div>
           <div>
-            <label className={label}>Revenue estimate ($)</label>
+            <label className={label}>Estimated Sale Price ($)</label>
             <input type="number" className={field} value={form.revenue_estimate}
               onChange={e => setForm({ ...form, revenue_estimate: parseFloat(e.target.value) || 0 })} />
           </div>
         </div>
 
-        <div>
-          <label className={label}>Location</label>
-          <input className={field} placeholder="County, State" value={form.location || ''}
-            onChange={e => setForm({ ...form, location: e.target.value })} />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={label}>Location</label>
+            <input className={field} placeholder="County, State" value={form.location || ''}
+              onChange={e => setForm({ ...form, location: e.target.value })} />
+          </div>
+          <div>
+            <label className={label}>Bank account</label>
+            <select className={field} value={form.bank_account_id || ''}
+              onChange={e => setForm({ ...form, bank_account_id: e.target.value || undefined })}>
+              <option value="">— None —</option>
+              {accounts.map(a => <option key={a.id} value={a.id}>{a.legal_business_name || a.name}</option>)}
+            </select>
+          </div>
         </div>
 
         {error && <p className="text-sm text-red-500">{error}</p>}

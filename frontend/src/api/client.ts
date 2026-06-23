@@ -114,16 +114,31 @@ export interface Project {
   budget_total: number
   revenue_estimate: number
   notes?: string | null
+  bank_account_id?: string | null
+  fund_collected_amount: number
+  fund_interest_rate: number
+  fund_collected_date?: string | null
   // computed KPIs
   spent_so_far: number
   revenue_actual: number
   revenue_remaining: number
   budget_remaining: number
   pct_budget_used: number | null
+  project_costs_total: number
+  estimated_profit: number
   margin_estimate: number
   roi_estimate_pct: number | null
   estimated_irr_pct: number | null
   status_color: StatusColor
+  bank_balance: number | null
+  fund_interest_accrued: number
+}
+
+export interface ProjectCostItem {
+  id: number
+  project_id: string
+  description: string
+  amount: number
 }
 
 export interface ProjectPhase {
@@ -194,6 +209,10 @@ export interface ProjectCreateInput {
   budget_total?: number
   revenue_estimate?: number
   notes?: string
+  bank_account_id?: string
+  fund_collected_amount?: number
+  fund_interest_rate?: number
+  fund_collected_date?: string
 }
 
 // ─── API calls ────────────────────────────────────────────────────────────────
@@ -250,7 +269,16 @@ export const api = {
     req<Project>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<ProjectCreateInput>) =>
     req<Project>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  deleteProject: (id: string) => req(`/projects/${id}`, { method: 'DELETE' }),
+  deleteProject: (id: string, force = false) =>
+    req(`/projects/${id}${force ? '?force=true' : ''}`, { method: 'DELETE' }),
+
+  // Project cost items
+  costItems: (projectId: string) => req<ProjectCostItem[]>(`/projects/${projectId}/cost-items`),
+  createCostItem: (projectId: string, description: string, amount: number) =>
+    req<ProjectCostItem>(`/projects/${projectId}/cost-items`, { method: 'POST', body: JSON.stringify({ description, amount }) }),
+  updateCostItem: (itemId: number, body: Partial<{ description: string; amount: number }>) =>
+    req<ProjectCostItem>(`/projects/cost-items/${itemId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteCostItem: (itemId: number) => req(`/projects/cost-items/${itemId}`, { method: 'DELETE' }),
 
   projectBurndown: (id: string) => req<BurndownPoint[]>(`/projects/${id}/burndown`),
   projectCategoryBreakdown: (id: string) => req<CategoryBreakdown[]>(`/projects/${id}/category-breakdown`),
