@@ -13,7 +13,9 @@ async function req<T>(path: string, init: RequestInit = {}, skipRedirect = false
     throw new Error('Unauthorized')
   }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json() as Promise<T>
+  if (res.status === 204) return undefined as T
+  const text = await res.text()
+  return (text ? JSON.parse(text) : undefined) as T
 }
 
 function qs(params: Record<string, string | number | undefined | null>): string {
